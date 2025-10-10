@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		EB05D98B2E98C60D00A9E3E3 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = EB05D98A2E98C60500A9E3E3 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		EB05D96B2E98BE5E00A9E3E3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		EB05D95C2E98BE5C00A9E3E3 /* PicSea.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PicSea.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB05D96A2E98BE5E00A9E3E3 /* PicSeaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PicSeaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB05D9742E98BE5E00A9E3E3 /* PicSeaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PicSeaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EB05D98A2E98C60500A9E3E3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		EB05D9532E98BE5C00A9E3E3 = {
 			isa = PBXGroup;
 			children = (
+				EB05D98A2E98C60500A9E3E3 /* README.md */,
 				EB05D95E2E98BE5C00A9E3E3 /* PicSea */,
 				EB05D96D2E98BE5E00A9E3E3 /* PicSeaTests */,
 				EB05D9772E98BE5E00A9E3E3 /* PicSeaUITests */,
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EB05D98B2E98C60D00A9E3E3 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
