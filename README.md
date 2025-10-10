@@ -1,3 +1,3 @@
 # PicSea
 
-# Sam & Sydney's Senior Project
+## Sam & Sydney's Senior Project
