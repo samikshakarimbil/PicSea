@@ -32,11 +32,25 @@
 		EB05D96A2E98BE5E00A9E3E3 /* PicSeaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PicSeaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB05D9742E98BE5E00A9E3E3 /* PicSeaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PicSeaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB05D98A2E98C60500A9E3E3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		EB39B1E52EA0759700FB78B2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = PicSea/Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		EB39B1E92EA0766D00FB78B2 /* Exceptions for "PicSea" folder in "PicSea" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = EB05D95B2E98BE5C00A9E3E3 /* PicSea */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		EB05D95E2E98BE5C00A9E3E3 /* PicSea */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EB39B1E92EA0766D00FB78B2 /* Exceptions for "PicSea" folder in "PicSea" target */,
+			);
 			path = PicSea;
 			sourceTree = "<group>";
 		};
@@ -80,6 +94,7 @@
 		EB05D9532E98BE5C00A9E3E3 = {
 			isa = PBXGroup;
 			children = (
+				EB39B1E52EA0759700FB78B2 /* Info.plist */,
 				EB05D98A2E98C60500A9E3E3 /* README.md */,
 				EB05D95E2E98BE5C00A9E3E3 /* PicSea */,
 				EB05D96D2E98BE5E00A9E3E3 /* PicSeaTests */,
@@ -329,6 +344,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = "$(PROJECT_DIR)/PicSea/Info.plist\n";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -385,6 +401,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = "$(PROJECT_DIR)/PicSea/Info.plist\n";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -404,6 +421,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(PROJECT_DIR)/PicSea/Info.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -443,6 +461,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(PROJECT_DIR)/PicSea/Info.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

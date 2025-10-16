@@ -2,8 +2,7 @@
 //  PicSeaTests.swift
 //  PicSeaTests
 //
-//  Created by Sydney Lynch on 10/9/25.
-//
+
 
 import Testing
 

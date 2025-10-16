@@ -6,8 +6,28 @@
 	<dict>
 		<key>PicSea.xcscheme_^#shared#^_</key>
 		<dict>
+			<key>isShown</key>
+			<true/>
 			<key>orderHint</key>
 			<integer>0</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>EB05D95B2E98BE5C00A9E3E3</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>EB05D9692E98BE5E00A9E3E3</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>EB05D9732E98BE5E00A9E3E3</key>
+		<dict>
+			<key>primary</key>
+			<true/>
 		</dict>
 	</dict>
 </dict>
