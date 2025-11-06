@@ -7,7 +7,7 @@ import SwiftUI
 import Photos
 
 struct ContentView: View {
-    @StateObject var viewModel = PhotoLibraryViewModel()
+    @StateObject var vm = PhotoLibraryViewModel()
 
     @State private var newName = ""
     @State private var showAlert = false
@@ -17,19 +17,19 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             Group {
-                if !viewModel.authorized {
+                if !vm.authorized {
                     VStack {
                         Text("PicSea needs access to your photos.")
                             .padding()
                         Button("Grant Access") {
-                            viewModel.loadPhotos()
+                            vm.loadPhotos()
                         }
                         .buttonStyle(.borderedProminent)
                     }
                 } else {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
-                            ForEach(viewModel.assets, id: \.localIdentifier) { asset in
+                            ForEach(vm.assets, id: \.localIdentifier) { asset in
                                 PhotoThumbnail(asset: asset)
                             }
                         }
@@ -37,7 +37,7 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("PicSea Library")
-            .onAppear { viewModel.loadPhotos() }
+            .onAppear { vm.loadPhotos() }
 
             // Bottom input bar
             .safeAreaInset(edge: .bottom) {
@@ -66,9 +66,14 @@ struct ContentView: View {
 
     private func submit() {
         let query = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
-        let results = viewModel.search(prompt: query)
-        viewModel.assets = results
+        if query.isEmpty {
+            // Empty query = show full gallery again
+            vm.fetchPhotos()                // repopulates from the photo library
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+        let results = vm.search(prompt: query)
+        vm.assets = results
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
