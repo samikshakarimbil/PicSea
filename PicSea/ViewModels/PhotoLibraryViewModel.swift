@@ -64,10 +64,22 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
     deinit {
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
-}
+    }
+// MARK: - Folder / Album Creation
+extension PhotoLibraryViewModel {
+    func createFolder(named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        PHPhotoLibrary.shared().performChanges({
+            _ = PHCollectionListChangeRequest.creationRequestForCollectionList(withTitle: name)
+        }, completionHandler: { success, error in
+            DispatchQueue.main.async { completion(success, error) }
+        })
+    }
 
-//struct ContentView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        ContentView()
-//    }
-//}
+    func createAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+        }, completionHandler: { success, error in
+            DispatchQueue.main.async { completion(success, error) }
+        })
+    }
+}

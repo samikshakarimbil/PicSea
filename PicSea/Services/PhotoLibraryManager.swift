@@ -16,6 +16,7 @@ struct PhotoLibraryManager {
         }
     }
 
+
     static func fetchAllPhotos() -> [PHAsset] {
         let fetchOptions = PHFetchOptions()
         fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]

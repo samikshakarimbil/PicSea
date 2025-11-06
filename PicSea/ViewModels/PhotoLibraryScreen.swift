@@ -1,45 +1,49 @@
 //
-//  ContentView.swift
+//  PhotoLibraryScreen.swift
 //  PicSea
 //
+//  Created by Samiksha Karimbil on 11/5/25.
+//
+
 
 import SwiftUI
 import Photos
 
-struct ContentView: View {
-    @StateObject var viewModel = PhotoLibraryViewModel()
+struct PhotoLibraryScreen: View {
+    @StateObject var vm = PhotoLibraryViewModel()
 
     @State private var newName = ""
     @State private var showAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
 
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 1)]
+
     var body: some View {
         NavigationView {
             Group {
-                if !viewModel.authorized {
-                    VStack {
-                        Text("PicSea needs access to your photos.")
-                            .padding()
-                        Button("Grant Access") {
-                            viewModel.loadPhotos()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                } else {
+                if vm.authorized {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
-                            ForEach(viewModel.assets, id: \.localIdentifier) { asset in
-                                PhotoThumbnail(asset: asset)
+                        LazyVGrid(columns: columns, spacing: 1) {
+                            ForEach(vm.assets, id: \.localIdentifier) { asset in
+                                AssetThumbnail(asset: asset, size: 100)
                             }
                         }
                     }
+                    .navigationTitle("PicSea")
+                } else {
+                    VStack(spacing: 16) {
+                        Text("Photos access is needed to show your library.")
+                            .multilineTextAlignment(.center)
+                        Button("Allow Access") {
+                            vm.loadPhotos()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
+                    .navigationTitle("PicSea")
                 }
             }
-            .navigationTitle("PicSea Library")
-            .onAppear { viewModel.loadPhotos() }
-
-            // Bottom input bar
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 8) {
                     TextField("New folder name…", text: $newName)
@@ -61,20 +65,19 @@ struct ContentView: View {
                 Text(alertMessage)
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom) // keep bar visible when keyboard is up
     }
 
     private func submit() {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
-        // Create a FOLDER in Photos:
-        viewModel.createFolder(named: name) { success, error in
+        // CREATE FOLDER:
+        vm.createFolder(named: name) { success, error in
             handleResult(kind: "Folder", name: name, success: success, error: error)
         }
 
-        // If you want an ALBUM instead, use this line instead of the one above:
-        // viewModel.createAlbum(named: name) { success, error in
+        // If you want an ALBUM instead:
+        // vm.createAlbum(named: name) { success, error in
         //     handleResult(kind: "Album", name: name, success: success, error: error)
         // }
     }
@@ -90,31 +93,5 @@ struct ContentView: View {
         }
         showAlert = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-}
-
-struct PhotoThumbnail: View {
-    let asset: PHAsset
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 100, height: 100)
-                    .clipped()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 100, height: 100)
-            }
-        }
-        .onAppear {
-            PhotoLibraryManager.requestImage(for: asset) { img in
-                self.image = img
-            }
-        }
     }
 }
