@@ -26,11 +26,41 @@ struct ContentView: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    
                 } else {
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
-                            ForEach(vm.assets, id: \.localIdentifier) { asset in
-                                PhotoThumbnail(asset: asset)
+                    VStack(spacing: 12) {
+                        // Show only when there's a non-empty prompt (filtered state)
+                        if !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            HStack {
+                                Button {
+                                    let defaultName = newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? "PicSea Results"
+                                        : newName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                                    vm.saveResultsToAlbum(named: defaultName) { success, error in
+                                        alertTitle = success ? "Saved to Album" : "Couldn't Save"
+                                        alertMessage = success
+                                            ? "Your current results were saved in “\(defaultName)”."
+                                            : (error?.localizedDescription ?? "Unknown error.")
+                                        showAlert = true
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    }
+                                } label: {
+                                    Label("Save Results to Album", systemImage: "square.and.arrow.down")
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                        }
+
+                        // Your grid
+                        ScrollView {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
+                                ForEach(vm.assets, id: \.localIdentifier) { asset in
+                                    PhotoThumbnail(asset: asset)
+                                }
                             }
                         }
                     }

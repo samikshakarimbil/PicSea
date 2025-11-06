@@ -59,6 +59,90 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
             self.fetchPhotos()
         }
     }
+    
+    // Get an existing album by name (if it exists)
+    func fetchAlbum(named name: String) -> PHAssetCollection? {
+        let opts = PHFetchOptions()
+        opts.predicate = NSPredicate(format: "localizedTitle = %@", name)
+        let res = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: opts)
+        return res.firstObject
+    }
+
+    // Create the album if needed and return its localIdentifier
+    func createAlbumIfNeeded(named name: String, completion: @escaping (String?, Error?) -> Void) {
+        if let existing = fetchAlbum(named: name) {
+            completion(existing.localIdentifier, nil)
+            return
+        }
+
+        var placeholder: PHObjectPlaceholder?
+
+        PHPhotoLibrary.shared().performChanges({
+            let req = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            placeholder = req.placeholderForCreatedAssetCollection
+        }) { success, error in
+            DispatchQueue.main.async {
+                if success, let id = placeholder?.localIdentifier {
+                    completion(id, nil)
+                } else {
+                    completion(nil, error)
+                }
+            }
+        }
+    }
+
+    // Add the current results (your filtered list) to an album by id
+    private func addAssets(_ assets: [PHAsset], toAlbumId localId: String, completion: @escaping (Bool, Error?) -> Void) {
+        let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
+        guard let album = fetch.firstObject else {
+            completion(false, NSError(domain: "PicSea", code: -1, userInfo: [NSLocalizedDescriptionKey: "Album not found"]))
+            return
+        }
+        guard !assets.isEmpty else { completion(true, nil); return }
+
+        PHPhotoLibrary.shared().performChanges({
+            if let change = PHAssetCollectionChangeRequest(for: album) {
+                change.addAssets(assets as NSArray)
+            }
+        }) { success, error in
+            DispatchQueue.main.async { completion(success, error) }
+        }
+    }
+
+    // Public method you call from the button
+    func saveResultsToAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        // Use your filtered list if you have one; otherwise use `assets`
+        // If you created `shownAssets`, swap it in here.
+        let assetsToSave: [PHAsset] = self.assets
+
+        createAlbumIfNeeded(named: name) { albumId, err in
+            guard let albumId = albumId, err == nil else {
+                completion(false, err)
+                return
+            }
+            self.addAssets(assetsToSave, toAlbumId: albumId, completion: completion)
+        }
+    }
+
+    // Add the currently displayed results to the given album (by local id)
+    func addShownAssets(toAlbumWithLocalId localId: String, completion: @escaping (Bool, Error?) -> Void) {
+        let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
+        guard let album = fetch.firstObject else {
+            completion(false, NSError(domain: "PicSea", code: -1, userInfo: [NSLocalizedDescriptionKey: "Album not found"]))
+            return
+        }
+        // Use shownAssets if you have it; if not, use assets (your current array)
+        let assetsToAdd: [PHAsset] = (self.value(forKey: "shownAssets") as? [PHAsset]) ?? self.assets
+        guard !assetsToAdd.isEmpty else { completion(true, nil); return }
+
+        PHPhotoLibrary.shared().performChanges({
+            if let change = PHAssetCollectionChangeRequest(for: album) {
+                change.addAssets(assetsToAdd as NSArray)
+            }
+        }) { success, error in
+            DispatchQueue.main.async { completion(success, error) }
+        }
+    }
 
     deinit {
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
