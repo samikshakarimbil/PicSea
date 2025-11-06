@@ -65,18 +65,11 @@ struct ContentView: View {
     }
 
     private func submit() {
-        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-
-        // Create a FOLDER in Photos:
-        viewModel.createFolder(named: name) { success, error in
-            handleResult(kind: "Folder", name: name, success: success, error: error)
-        }
-
-        // If you want an ALBUM instead, use this line instead of the one above:
-        // viewModel.createAlbum(named: name) { success, error in
-        //     handleResult(kind: "Album", name: name, success: success, error: error)
-        // }
+        let query = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        let results = viewModel.search(prompt: query)
+        viewModel.assets = results
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func handleResult(kind: String, name: String, success: Bool, error: Error?) {

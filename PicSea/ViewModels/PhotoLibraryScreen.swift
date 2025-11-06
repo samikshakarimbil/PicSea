@@ -68,19 +68,13 @@ struct PhotoLibraryScreen: View {
     }
 
     private func submit() {
-        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-
-        // CREATE FOLDER:
-        vm.createFolder(named: name) { success, error in
-            handleResult(kind: "Folder", name: name, success: success, error: error)
-        }
-
-        // If you want an ALBUM instead:
-        // vm.createAlbum(named: name) { success, error in
-        //     handleResult(kind: "Album", name: name, success: success, error: error)
-        // }
+        let query = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        let results = vm.search(prompt: query)
+        vm.assets = results
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
+
 
     private func handleResult(kind: String, name: String, success: Bool, error: Error?) {
         if success {
