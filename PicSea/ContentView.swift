@@ -42,10 +42,15 @@ struct ContentView: View {
             // Bottom input bar
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 8) {
-                    TextField("Enter your prompt…", text: $newName)
+                    TextField("Enter your prompt...", text: $newName)
                         .textFieldStyle(.roundedBorder)
                         .submitLabel(.done)
                         .onSubmit { submit() }
+                        .onChange(of: newName) { val in
+                            if val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                vm.fetchPhotos()
+                            }
+                        }
 
                     Button("Submit") { submit() }
                         .buttonStyle(.borderedProminent)
