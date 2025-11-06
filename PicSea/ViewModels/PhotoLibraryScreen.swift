@@ -46,7 +46,7 @@ struct PhotoLibraryScreen: View {
             }
             .safeAreaInset(edge: .bottom) {
                 HStack(spacing: 8) {
-                    TextField("New folder name…", text: $newName)
+                    TextField("Enter your prompt...", text: $newName)
                         .textFieldStyle(.roundedBorder)
                         .submitLabel(.done)
                         .onSubmit { submit() }

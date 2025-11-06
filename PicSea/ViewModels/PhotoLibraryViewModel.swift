@@ -65,21 +65,21 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
     }
-// MARK: - Folder / Album Creation
-extension PhotoLibraryViewModel {
-    func createFolder(named name: String, completion: @escaping (Bool, Error?) -> Void) {
-        PHPhotoLibrary.shared().performChanges({
-            _ = PHCollectionListChangeRequest.creationRequestForCollectionList(withTitle: name)
-        }, completionHandler: { success, error in
-            DispatchQueue.main.async { completion(success, error) }
-        })
-    }
+    // MARK: - Folder / Album Creation
+    extension PhotoLibraryViewModel {
+        func createFolder(named name: String, completion: @escaping (Bool, Error?) -> Void) {
+            PHPhotoLibrary.shared().performChanges({
+                _ = PHCollectionListChangeRequest.creationRequestForCollectionList(withTitle: name)
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async { completion(success, error) }
+            })
+        }
 
-    func createAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
-        PHPhotoLibrary.shared().performChanges({
-            PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
-        }, completionHandler: { success, error in
-            DispatchQueue.main.async { completion(success, error) }
-        })
+        func createAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            }, completionHandler: { success, error in
+                DispatchQueue.main.async { completion(success, error) }
+            })
+        }
     }
-}
