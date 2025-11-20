@@ -107,8 +107,11 @@ struct ContentView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
-        let results = vm.search(prompt: query)
-        vm.assets = results
+        Task {
+            let results = await vm.search(prompt: query)
+            vm.assets = results
+        }
+
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 

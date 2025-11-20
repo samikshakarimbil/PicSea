@@ -151,17 +151,45 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
     // MARK: - Folder / Album Creation
 extension PhotoLibraryViewModel {
     // Fake search: if prompt contains a 4-digit year, filter by that year. Otherwise show first 200 items.
-    func search(prompt: String) -> [PHAsset] {
-        let lower = prompt.lowercased()
-        let yearMatch = lower.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression)
-        if yearMatch != nil {
-            return assets.filter { asset in
-                guard let d = asset.creationDate else { return false }
-                let y = Calendar.current.component(.year, from: d)
-                return lower.contains("\(y)")
+    @MainActor
+    func search(prompt: String) async -> [PHAsset] {
+        let keyword = prompt.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !keyword.isEmpty else { return assets }
+
+        var matches: [PHAsset] = []
+
+        for asset in assets {
+            // Step 1: get image for asset (thumbnail is fine)
+            let img = await requestThumbnail(for: asset)
+            guard let img = img else { continue }
+
+            // Step 2: run Vision classifier
+            do {
+                let labels = try await VisionClassifier.classify(image: img)
+
+                // Step 3: check if the prompt is one of the labels
+                if labels.contains(keyword) {
+                    matches.append(asset)
+                }
+            } catch {
+                print("Vision failed:", error)
             }
-        } else {
-            return Array(assets.prefix(200))
+        }
+
+        return matches
+    }
+
+    func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 256, height: 256),
+                contentMode: .aspectFill,
+                options: nil
+            ) { img, _ in
+                continuation.resume(returning: img)
+            }
         }
     }
+
 }

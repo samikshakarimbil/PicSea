@@ -15,13 +15,14 @@ PicSea/
 |-- Views/                              # All SwiftUI screens  
 │  
 |-- ViewModels/                         # ObservableObjects (logic + state)  
-│   |-- PhotoLibraryViewModel.swift     # Handles fetching/managing photos  
+│   |-- PhotoLibraryViewModel.swift     # Handles fetching/managing photos 
+|   |-- AssetThumbnail.swift            # ? 
 │  
 |-- Models/                             # Data structures  
 │  
 |-- Services/                           # Non-UI utilities (Core ML, Photos, etc.)  
 │   |-- PhotoLibraryManager.swift       # PhotoKit interactions  
-│    
+│   |-- MLClassifier.swift              # ?
 
 
 PicSeaTests/  
