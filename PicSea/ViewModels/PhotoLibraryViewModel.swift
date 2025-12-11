@@ -9,16 +9,22 @@ import Photos
 
 class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var assets: [PHAsset] = []
+    @Published var allAssets: [PHAsset] = []
     @Published var authorized: Bool = false
+    @Published var isFilteredResults: Bool = false
 
-    override init() {
+    // Use the classifier passed from PicSeaApp
+    private let classifier: ClassifierProtocol
+
+    
+    init(classifier: ClassifierProtocol) {
+        self.classifier = classifier
         super.init()
         checkAuthorization()
         PHPhotoLibrary.shared().register(self)
     }
-
+   
     // MARK: - Authorization
-
     func checkAuthorization() {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         switch status {
@@ -48,9 +54,12 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         let allPhotos = PHAsset.fetchAssets(with: .image, options: opts)
         var temp: [PHAsset] = []
         allPhotos.enumerateObjects { asset, _, _ in temp.append(asset) }
-        DispatchQueue.main.async { self.assets = temp }
+        
+        DispatchQueue.main.async {
+            self.allAssets = temp       // store full library
+            self.assets = temp          // display all by default
+        }
     }
-
 
     // MARK: - Live updates
 
@@ -59,8 +68,9 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
             self.fetchPhotos()
         }
     }
-    
-    // Get an existing album by name (if it exists)
+
+    // MARK: - Album Helpers
+
     func fetchAlbum(named name: String) -> PHAssetCollection? {
         let opts = PHFetchOptions()
         opts.predicate = NSPredicate(format: "localizedTitle = %@", name)
@@ -68,7 +78,6 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         return res.firstObject
     }
 
-    // Create the album if needed and return its localIdentifier
     func createAlbumIfNeeded(named name: String, completion: @escaping (String?, Error?) -> Void) {
         if let existing = fetchAlbum(named: name) {
             completion(existing.localIdentifier, nil)
@@ -91,7 +100,6 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         }
     }
 
-    // Add the current results (your filtered list) to an album by id
     private func addAssets(_ assets: [PHAsset], toAlbumId localId: String, completion: @escaping (Bool, Error?) -> Void) {
         let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
         guard let album = fetch.firstObject else {
@@ -109,10 +117,7 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         }
     }
 
-    // Public method you call from the button
     func saveResultsToAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
-        // Use your filtered list if you have one; otherwise use `assets`
-        // If you created `shownAssets`, swap it in here.
         let assetsToSave: [PHAsset] = self.assets
 
         createAlbumIfNeeded(named: name) { albumId, err in
@@ -124,14 +129,13 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         }
     }
 
-    // Add the currently displayed results to the given album (by local id)
     func addShownAssets(toAlbumWithLocalId localId: String, completion: @escaping (Bool, Error?) -> Void) {
         let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
         guard let album = fetch.firstObject else {
             completion(false, NSError(domain: "PicSea", code: -1, userInfo: [NSLocalizedDescriptionKey: "Album not found"]))
             return
         }
-        // Use shownAssets if you have it; if not, use assets (your current array)
+
         let assetsToAdd: [PHAsset] = (self.value(forKey: "shownAssets") as? [PHAsset]) ?? self.assets
         guard !assetsToAdd.isEmpty else { completion(true, nil); return }
 
@@ -147,36 +151,46 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
     deinit {
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
-    }
-    // MARK: - Folder / Album Creation
+}
+
+// MARK: - Search + AI Classification
 extension PhotoLibraryViewModel {
-    // Fake search: if prompt contains a 4-digit year, filter by that year. Otherwise show first 200 items.
+
     @MainActor
-    func search(prompt: String) async -> [PHAsset] {
+    func runAIClassification() async -> [PHAsset] {
+        return await classifier.classify(assets: assets)
+    }
+
+    @MainActor
+    func search(in assets: [PHAsset], prompt: String) async -> [PHAsset] {
         let keyword = prompt.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !keyword.isEmpty else { return assets }
+        guard !keyword.isEmpty else {
+            return allAssets           // empty prompt → show all
+        }
+        
+        if keyword.isEmpty {
+            isFilteredResults = false
+            return allAssets
+        } else {
+            isFilteredResults = true
+        }
+        
+        var filteredAssets: [PHAsset] = assets
 
-        var matches: [PHAsset] = []
-
-        for asset in assets {
-            // Step 1: get image for asset (thumbnail is fine)
-            let img = await requestThumbnail(for: asset)
-            guard let img = img else { continue }
-
-            // Step 2: run Vision classifier
-            do {
-                let labels = try await VisionClassifier.classify(image: img)
-
-                // Step 3: check if the prompt is one of the labels
-                if labels.contains(keyword) {
-                    matches.append(asset)
+        
+        // Optional: year filtering
+        if let year = Int(keyword), keyword.count == 4 {
+            filteredAssets = filteredAssets.filter { asset in
+                if let date = asset.creationDate {
+                    return Calendar.current.component(.year, from: date) == year
                 }
-            } catch {
-                print("Vision failed:", error)
+                return false
             }
         }
-
-        return matches
+        
+        // Run classifier
+        let results = await classifier.classify(assets: filteredAssets)
+        return results
     }
 
     func requestThumbnail(for asset: PHAsset) async -> UIImage? {
@@ -190,6 +204,10 @@ extension PhotoLibraryViewModel {
                 continuation.resume(returning: img)
             }
         }
+    }
+    
+    func resetAssets() {
+        assets = allAssets
     }
 
 }

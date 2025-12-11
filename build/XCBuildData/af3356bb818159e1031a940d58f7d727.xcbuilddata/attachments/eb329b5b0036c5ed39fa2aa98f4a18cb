@@ -1,0 +1,28 @@
+{
+  "" : {
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests-master.dia",
+    "emit-module-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests-master-emit-module.dia",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests-master.swiftdeps"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSeaUITests/PicSeaUITests.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITests~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSeaUITests/PicSeaUITestsLaunchTests.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSeaUITests.build/Objects-normal/arm64/PicSeaUITestsLaunchTests~partial.swiftmodule"
+  }
+}

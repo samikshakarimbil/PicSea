@@ -5,19 +5,39 @@
 
 import Foundation
 import Vision
+import Photos
 import UIKit
 
-struct VisionClassifier {
+final class VisionClassifier: ClassifierProtocol {
 
-    static func classify(image: UIImage) async throws -> [String] {
-        guard let cgImage = image.cgImage else { return [] }
-
+    var isAvailable: Bool {
         let request = VNClassifyImageRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage)
+        guard type(of: request).supportedRevisions.contains(request.revision) else {
+            return false
+        }
 
-        try handler.perform([request])
+        // Attempt a dummy request to detect runtime availability
+        guard let testImage = UIImage(systemName: "photo")?.cgImage else {
+            return false
+        }
 
-        let results = request.results ?? []
-        return results.map { $0.identifier.lowercased() }
+        let handler = VNImageRequestHandler(cgImage: testImage, options: [:])
+        do {
+            try handler.perform([request])
+            return true
+        } catch {
+            print("Vision unavailable at runtime:", error)
+            return false
+        }
+    }
+    
+    func classify(assets: [PHAsset]) async -> [PHAsset] {
+        guard isAvailable else {
+            print("VisionClassifier not available, returning empty array")
+            return []
+        }
+
+        // TODO: Implement real Vision classification later
+        return assets
     }
 }

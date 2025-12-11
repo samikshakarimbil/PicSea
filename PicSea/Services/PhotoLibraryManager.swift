@@ -8,6 +8,7 @@ import Photos
 import UIKit
 
 struct PhotoLibraryManager {
+
     static func requestAuthorization(completion: @escaping (Bool) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             DispatchQueue.main.async {
@@ -15,7 +16,6 @@ struct PhotoLibraryManager {
             }
         }
     }
-
 
     static func fetchAllPhotos() -> [PHAsset] {
         let fetchOptions = PHFetchOptions()
@@ -39,5 +39,38 @@ struct PhotoLibraryManager {
                              options: nil) { image, _ in
             completion(image)
         }
+    }
+
+    static func createAlbum(named name: String,
+                            assets: [PHAsset],
+                            completion: @escaping (Bool) -> Void) {
+
+        var albumPlaceholder: PHObjectPlaceholder?
+
+        PHPhotoLibrary.shared().performChanges({
+            let createAlbumRequest = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            albumPlaceholder = createAlbumRequest.placeholderForCreatedAssetCollection
+        }, completionHandler: { success, _ in
+            guard success,
+                  let placeholder = albumPlaceholder else {
+                completion(false)
+                return
+            }
+
+            // Add assets to the album
+            let collectionFetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [placeholder.localIdentifier], options: nil)
+
+            guard let album = collectionFetch.firstObject else {
+                completion(false)
+                return
+            }
+
+            PHPhotoLibrary.shared().performChanges({
+                let addRequest = PHAssetCollectionChangeRequest(for: album)
+                addRequest?.addAssets(assets as NSArray)
+            }, completionHandler: { finished, _ in
+                completion(finished)
+            })
+        })
     }
 }

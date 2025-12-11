@@ -8,9 +8,20 @@ import Vision
 
 @main
 struct PicSeaApp: App {
+    let classifier: ClassifierProtocol = {
+        let vision = VisionClassifier()
+        if vision.isAvailable {
+            print("Using VisionClassifier")
+            return vision
+        } else {
+            print("Vision unavailable → Using LocalMLClassifier")
+            return LocalMLClassifier()
+        }
+    }()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(vm: PhotoLibraryViewModel(classifier: classifier))
                 .task {
                     await classifyBobby()
                 }

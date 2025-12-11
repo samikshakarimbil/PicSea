@@ -13,6 +13,7 @@ PicSea/
 |-- Assets.xcassets                     # ?  
 │  
 |-- Views/                              # All SwiftUI screens  
+│   |-- AlbumCreationView.swift         # ?
 │  
 |-- ViewModels/                         # ObservableObjects (logic + state)  
 │   |-- PhotoLibraryViewModel.swift     # Handles fetching/managing photos 
@@ -22,7 +23,9 @@ PicSea/
 │  
 |-- Services/                           # Non-UI utilities (Core ML, Photos, etc.)  
 │   |-- PhotoLibraryManager.swift       # PhotoKit interactions  
-│   |-- MLClassifier.swift              # ?
+│   |-- VisionClassifier.swift          # Apple ML vision stuff
+│   |-- LocalMLClassifier.swift         # fallback AI when Apple Vision unavailable
+│   |-- ClassifierProtocol.swift        # parent AI protocol
 
 
 PicSeaTests/  

@@ -7,12 +7,16 @@ import SwiftUI
 import Photos
 
 struct ContentView: View {
-    @StateObject var vm = PhotoLibraryViewModel()
+    @StateObject var vm: PhotoLibraryViewModel
 
     @State private var newName = ""
     @State private var showAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
+
+    @State private var showAlbumPrompt = false
+    @State private var albumNameInput = ""
+    @State private var continueFromResults = false
 
     var body: some View {
         NavigationView {
@@ -21,30 +25,20 @@ struct ContentView: View {
                     VStack {
                         Text("PicSea needs access to your photos.")
                             .padding()
-                        Button("Grant Access") {
-                            vm.loadPhotos()
-                        }
-                        .buttonStyle(.borderedProminent)
+                        Button("Grant Access") { vm.loadPhotos() }
+                            .buttonStyle(.borderedProminent)
                     }
-                    
                 } else {
                     VStack(spacing: 12) {
-                        // Show only when there's a non-empty prompt (filtered state)
-                        if !newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+                        // Save button above results
+                        if vm.isFilteredResults &&
+                           (!newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || continueFromResults) {
+
                             HStack {
                                 Button {
-                                    let defaultName = newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? "PicSea Results"
-                                        : newName.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                                    vm.saveResultsToAlbum(named: defaultName) { success, error in
-                                        alertTitle = success ? "Saved to Album" : "Couldn't Save"
-                                        alertMessage = success
-                                            ? "Your current results were saved in “\(defaultName)”."
-                                            : (error?.localizedDescription ?? "Unknown error.")
-                                        showAlert = true
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
+                                    albumNameInput = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    showAlbumPrompt = true
                                 } label: {
                                     Label("Save Results to Album", systemImage: "square.and.arrow.down")
                                 }
@@ -55,7 +49,6 @@ struct ContentView: View {
                             .padding(.horizontal)
                         }
 
-                        // Your grid
                         ScrollView {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
                                 ForEach(vm.assets, id: \.localIdentifier) { asset in
@@ -69,26 +62,68 @@ struct ContentView: View {
             .navigationTitle("PicSea Library")
             .onAppear { vm.loadPhotos() }
 
-            // Bottom input bar
             .safeAreaInset(edge: .bottom) {
-                HStack(spacing: 8) {
-                    TextField("Enter your prompt...", text: $newName)
-                        .textFieldStyle(.roundedBorder)
-                        .submitLabel(.done)
-                        .onSubmit { submit() }
-                        .onChange(of: newName) { val in
-                            if val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                vm.fetchPhotos()
-                            }
-                        }
 
-                    Button("Submit") { submit() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                VStack(spacing: 8) {
+
+                    // TOGGLE ABOVE SEARCH BAR
+                    if vm.isFilteredResults &&
+                        (!newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || continueFromResults) {
+
+                        Toggle("Continue searching from these results", isOn: $continueFromResults)
+                            .padding(.horizontal)
+                    }
+
+                    // SEARCH BAR
+                    HStack(spacing: 8) {
+                        TextField("Enter your prompt...", text: $newName)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .onSubmit { submit() }
+                            .onChange(of: newName) { oldValue, newValue in
+                                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                                if trimmed.isEmpty && !continueFromResults {
+                                    vm.resetAssets()
+                                    vm.isFilteredResults = false
+                                }
+                            }
+
+                        Button("Submit") { submit() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
                 .padding(.vertical, 10)
                 .background(.ultraThinMaterial)
+            }
+
+            // Global change handler (always active)
+            .onChange(of: continueFromResults) { oldVal, newVal in
+                if oldVal == true &&
+                   newVal == false &&
+                   newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+                    print("TEST → Resetting due to toggle OFF with blank prompt")
+                    vm.resetAssets()
+                    vm.isFilteredResults = false
+                }
+            }
+
+            .sheet(isPresented: $showAlbumPrompt) {
+                AlbumCreationView(albumName: $albumNameInput) {
+                    showAlbumPrompt = false
+                    let finalName = albumNameInput.isEmpty ? "PicSea Results" : albumNameInput
+                    vm.saveResultsToAlbum(named: finalName) { success, error in
+                        alertTitle = success ? "Saved to Album" : "Couldn't Save"
+                        alertMessage = success
+                            ? "Your current results were saved in “\(finalName)”."
+                            : (error?.localizedDescription ?? "Unknown error.")
+                        showAlert = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
             }
             .alert(alertTitle, isPresented: $showAlert) {
                 Button("OK", role: .cancel) {}
@@ -96,36 +131,27 @@ struct ContentView: View {
                 Text(alertMessage)
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom) // keep bar visible when keyboard is up
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private func submit() {
         let query = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseAssets = continueFromResults ? vm.assets : vm.allAssets
+
         if query.isEmpty {
-            // Empty query = show full gallery again
-            vm.fetchPhotos()                // repopulates from the photo library
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            vm.resetAssets()
+            vm.isFilteredResults = false
+            print("Search cleared → showing all assets")
             return
         }
+
+        print("Search for: \"\(query)\"")
+
         Task {
-            let results = await vm.search(prompt: query)
+            let results = await vm.search(in: baseAssets, prompt: query)
             vm.assets = results
+            vm.isFilteredResults = true
         }
-
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    private func handleResult(kind: String, name: String, success: Bool, error: Error?) {
-        if success {
-            alertTitle = "\(kind) Created"
-            alertMessage = "\"\(name)\" was created in Photos."
-            newName = ""
-        } else {
-            alertTitle = "Couldn't Create \(kind)"
-            alertMessage = error?.localizedDescription ?? "Unknown error."
-        }
-        showAlert = true
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 
@@ -148,8 +174,12 @@ struct PhotoThumbnail: View {
             }
         }
         .onAppear {
+            guard asset.pixelWidth > 0, asset.pixelHeight > 0 else { return }
+
             PhotoLibraryManager.requestImage(for: asset) { img in
-                self.image = img
+                if let validImg = img, validImg.size.width > 0, validImg.size.height > 0 {
+                    self.image = validImg
+                }
             }
         }
     }

@@ -1,0 +1,64 @@
+{
+  "source": "/Users/sydney/CSC/SP/PicSea/PicSea/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "PicSea Library",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 69
+        }
+      },
+      {
+        "comment": "",
+        "key": "PicSea needs access to your photos.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Grant Access",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 24
+        }
+      },
+      {
+        "comment": "",
+        "key": "Save Results to Album",
+        "location": {
+          "startingColumn": 43,
+          "startingLine": 49
+        }
+      },
+      {
+        "comment": "",
+        "key": "Enter your prompt...",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 75
+        }
+      },
+      {
+        "comment": "",
+        "key": "Submit",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 85
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 94
+        }
+      }
+    ]
+  },
+  "version": 1
+}
