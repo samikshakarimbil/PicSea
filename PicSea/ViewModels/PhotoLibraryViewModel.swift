@@ -152,6 +152,17 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
             self.addAssets(assetsToSave, toAlbumId: albumId, completion: completion)
         }
     }
+    
+    func saveSpecificAssetsToAlbum(_ assets: [PHAsset], named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        createAlbumIfNeeded(named: name) { albumId, error in
+            guard let albumId, error == nil else {
+                completion(false, error)
+                return
+            }
+
+            self.addAssets(assets, toAlbumId: albumId, completion: completion)
+        }
+    }
 }
 
 extension PhotoLibraryViewModel {

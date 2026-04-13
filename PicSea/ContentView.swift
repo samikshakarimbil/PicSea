@@ -68,8 +68,8 @@ struct ContentView: View {
             .onAppear {
                 vm.loadPhotos()
             }
-            .navigationDestination(isPresented: $showFiltersScreen) {
-                SearchResultsView(vm: vm, query: parsedQuery)
+            .fullScreenCover(isPresented: $showFiltersScreen) {
+                SearchSessionView(vm: vm, query: parsedQuery)
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
