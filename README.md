@@ -11,6 +11,8 @@ PicSea/
 |-- ContentView.swift                   # Root view or main tab view  
 |-- PicSea.entitlements                 # ??  
 |-- Assets.xcassets                     # ?  
+|-- README.md                           # this file
+|-- Info.plist
 │  
 |-- Views/                              # All SwiftUI screens  
 │   |-- AlbumCreationView.swift         # ?
@@ -36,6 +38,4 @@ PicSeaUITests/
 |  
 |-- PicSeaUITests.swift  
 |-- PicSeaUITestsLaunchTests.swift  
-
-
 
