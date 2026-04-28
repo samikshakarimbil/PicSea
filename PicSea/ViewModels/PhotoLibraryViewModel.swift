@@ -199,18 +199,24 @@ extension PhotoLibraryViewModel {
     @MainActor
     func search(in assets: [PHAsset], query: PhotoSearchQuery) async -> [PHAsset] {
         var filteredAssets = assets
+        let calendar = Calendar.current
 
         if let startDate = query.startDate {
+            let normalizedStartDate = calendar.startOfDay(for: startDate)
             filteredAssets = filteredAssets.filter { asset in
                 guard let creationDate = asset.creationDate else { return false }
-                return creationDate >= startDate
+                return creationDate >= normalizedStartDate
             }
         }
 
         if let endDate = query.endDate {
+            guard let normalizedEndDate = calendar.date(byAdding: DateComponents(day: 1, second: -1),
+                                                        to: calendar.startOfDay(for: endDate)) else {
+                return []
+            }
             filteredAssets = filteredAssets.filter { asset in
                 guard let creationDate = asset.creationDate else { return false }
-                return creationDate <= endDate
+                return creationDate <= normalizedEndDate
             }
         }
 
@@ -218,13 +224,23 @@ extension PhotoLibraryViewModel {
         case .any:
             break
         case .photo:
-            filteredAssets = filteredAssets.filter { $0.mediaType == .image }
+            filteredAssets = filteredAssets.filter {
+                $0.mediaType == .image && !$0.mediaSubtypes.contains(.photoScreenshot)
+            }
         case .screenshot:
             filteredAssets = filteredAssets.filter {
                 $0.mediaSubtypes.contains(.photoScreenshot)
             }
         case .selfie:
             break
+        }
+
+        let blurryAssetIDs = Set(
+            await PhotoLibraryManager.blurryAssets(from: filteredAssets).map(\.localIdentifier)
+        )
+
+        if !query.includeBlurred {
+            filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
         }
 
         if !query.concepts.isEmpty {

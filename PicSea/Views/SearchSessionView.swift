@@ -320,7 +320,10 @@ struct SearchSessionView: View {
 
         query.originalText = parsed.originalText
         query.concepts = parsed.concepts
-        query.mediaType = parsed.mediaType
+
+        if parsed.mediaType != .any {
+            query.mediaType = parsed.mediaType
+        }
 
         if query.startDate == nil {
             query.startDate = parsed.startDate
