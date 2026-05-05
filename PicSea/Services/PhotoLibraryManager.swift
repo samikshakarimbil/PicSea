@@ -29,6 +29,38 @@ struct PhotoLibraryManager {
         return assets
     }
 
+    static func screenshotAssetIdentifiers() -> Set<String> {
+        let collections = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum,
+            subtype: .smartAlbumScreenshots,
+            options: nil
+        )
+
+        guard let screenshotsAlbum = collections.firstObject else {
+            return []
+        }
+
+        let screenshotAssets = PHAsset.fetchAssets(in: screenshotsAlbum, options: nil)
+        var identifiers = Set<String>()
+
+        screenshotAssets.enumerateObjects { asset, _, _ in
+            identifiers.insert(asset.localIdentifier)
+        }
+
+        return identifiers
+    }
+
+    static func isScreenshotAsset(_ asset: PHAsset, screenshotAssetIdentifiers: Set<String>) -> Bool {
+        if asset.mediaSubtypes.contains(.photoScreenshot) || screenshotAssetIdentifiers.contains(asset.localIdentifier) {
+            return true
+        }
+
+        let resources = PHAssetResource.assetResources(for: asset)
+        return resources.contains { resource in
+            resource.originalFilename.localizedCaseInsensitiveContains("screenshot")
+        }
+    }
+
     static func requestImage(for asset: PHAsset,
                              targetSize: CGSize = CGSize(width: 200, height: 200),
                              completion: @escaping (UIImage?) -> Void) {

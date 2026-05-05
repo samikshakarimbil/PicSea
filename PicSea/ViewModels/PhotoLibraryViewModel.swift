@@ -200,6 +200,7 @@ extension PhotoLibraryViewModel {
     func search(in assets: [PHAsset], query: PhotoSearchQuery) async -> [PHAsset] {
         var filteredAssets = assets
         let calendar = Calendar.current
+        let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
 
         if let startDate = query.startDate {
             let normalizedStartDate = calendar.startOfDay(for: startDate)
@@ -225,11 +226,12 @@ extension PhotoLibraryViewModel {
             break
         case .photo:
             filteredAssets = filteredAssets.filter {
-                $0.mediaType == .image && !$0.mediaSubtypes.contains(.photoScreenshot)
+                $0.mediaType == .image &&
+                !PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
             }
         case .screenshot:
             filteredAssets = filteredAssets.filter {
-                $0.mediaSubtypes.contains(.photoScreenshot)
+                PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
             }
         case .selfie:
             break

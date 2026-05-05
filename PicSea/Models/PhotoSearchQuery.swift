@@ -12,7 +12,7 @@ struct PhotoSearchQuery {
     var startDate: Date?
     var endDate: Date?
 
-    var includeBlurred: Bool = false
+    var includeBlurred: Bool = true
     var mediaType: MediaType = .any
 }
 
