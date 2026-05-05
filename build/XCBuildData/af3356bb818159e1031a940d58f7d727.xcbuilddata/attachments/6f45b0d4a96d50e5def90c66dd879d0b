@@ -1,0 +1,88 @@
+{
+  "" : {
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSea-master.dia",
+    "emit-module-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSea-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSea-master-emit-module.dia",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSea-master.swiftdeps"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/ContentView.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/ContentView~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/PicSeaApp.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PicSeaApp~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/Services/MLClassifier.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/MLClassifier~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/Services/PhotoLibraryManager.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryManager~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/Services/VisionClassifier.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/VisionClassifier~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/ViewModels/AssetThumbnail.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/AssetThumbnail~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/PicSea/ViewModels/PhotoLibraryViewModel.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/PhotoLibraryViewModel~partial.swiftmodule"
+  },
+  "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/sydney/CSC/SP/PicSea/build/PicSea.build/Debug-iphoneos/PicSea.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

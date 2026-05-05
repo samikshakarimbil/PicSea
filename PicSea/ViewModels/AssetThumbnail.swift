@@ -2,9 +2,6 @@
 //  AssetThumbnail.swift
 //  PicSea
 //
-//  Created by Samiksha Karimbil on 11/5/25.
-//
-
 
 import SwiftUI
 import Photos
@@ -13,12 +10,13 @@ import UIKit
 struct AssetThumbnail: View {
     let asset: PHAsset
     let size: CGFloat
+
     @State private var image: UIImage?
 
     var body: some View {
         Group {
-            if let img = image {
-                Image(uiImage: img)
+            if let image {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -28,18 +26,24 @@ struct AssetThumbnail: View {
         }
         .frame(width: size, height: size)
         .clipped()
-        .onAppear(perform: requestImage)
+        .onAppear {
+            requestImage()
+        }
     }
 
     private func requestImage() {
-        let target = CGSize(width: size * UIScreen.main.scale, height: size * UIScreen.main.scale)
+        let targetSize = CGSize(
+            width: size * UIScreen.main.scale,
+            height: size * UIScreen.main.scale
+        )
+
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: target,
+            targetSize: targetSize,
             contentMode: .aspectFill,
             options: nil
-        ) { img, _ in
-            self.image = img
+        ) { image, _ in
+            self.image = image
         }
     }
 }

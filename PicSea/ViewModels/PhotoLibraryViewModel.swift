@@ -4,86 +4,106 @@
 //
 
 import Foundation
-import SwiftUI
 import Photos
+import UIKit
 
-class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
+final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var assets: [PHAsset] = []
-    @Published var authorized: Bool = false
+    @Published var allAssets: [PHAsset] = []
+    @Published var authorized = false
+    @Published var isFilteredResults = false
 
-    override init() {
+    private let classifier: ClassifierProtocol
+
+    init(classifier: ClassifierProtocol) {
+        self.classifier = classifier
         super.init()
         checkAuthorization()
         PHPhotoLibrary.shared().register(self)
     }
 
-    // MARK: - Authorization
+    deinit {
+        PHPhotoLibrary.shared().unregisterChangeObserver(self)
+    }
 
     func checkAuthorization() {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+
         switch status {
         case .authorized, .limited:
-            self.authorized = true
+            authorized = true
             fetchPhotos()
         case .notDetermined:
-            self.authorized = false
+            authorized = false
         default:
-            self.authorized = false
+            authorized = false
         }
     }
 
     func loadPhotos() {
-        PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.checkAuthorization()
             }
         }
     }
 
-    // MARK: - Fetch Photos
-
     func fetchPhotos() {
-        let opts = PHFetchOptions()
-        opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let allPhotos = PHAsset.fetchAssets(with: .image, options: opts)
-        var temp: [PHAsset] = []
-        allPhotos.enumerateObjects { asset, _, _ in temp.append(asset) }
-        DispatchQueue.main.async { self.assets = temp }
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+
+        let fetchedAssets = PHAsset.fetchAssets(with: .image, options: options)
+        var tempAssets: [PHAsset] = []
+
+        fetchedAssets.enumerateObjects { asset, _, _ in
+            tempAssets.append(asset)
+        }
+
+        DispatchQueue.main.async {
+            self.allAssets = tempAssets
+            self.assets = tempAssets
+        }
     }
 
-
-    // MARK: - Live updates
+    func resetAssets() {
+        assets = allAssets
+        isFilteredResults = false
+    }
 
     func photoLibraryDidChange(_ changeInstance: PHChange) {
         DispatchQueue.main.async {
             self.fetchPhotos()
         }
     }
-    
-    // Get an existing album by name (if it exists)
+
     func fetchAlbum(named name: String) -> PHAssetCollection? {
-        let opts = PHFetchOptions()
-        opts.predicate = NSPredicate(format: "localizedTitle = %@", name)
-        let res = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: opts)
-        return res.firstObject
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "localizedTitle = %@", name)
+
+        let result = PHAssetCollection.fetchAssetCollections(
+            with: .album,
+            subtype: .any,
+            options: options
+        )
+
+        return result.firstObject
     }
 
-    // Create the album if needed and return its localIdentifier
     func createAlbumIfNeeded(named name: String, completion: @escaping (String?, Error?) -> Void) {
-        if let existing = fetchAlbum(named: name) {
-            completion(existing.localIdentifier, nil)
+        if let existingAlbum = fetchAlbum(named: name) {
+            completion(existingAlbum.localIdentifier, nil)
             return
         }
 
         var placeholder: PHObjectPlaceholder?
 
         PHPhotoLibrary.shared().performChanges({
-            let req = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
-            placeholder = req.placeholderForCreatedAssetCollection
+            let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: name)
+            placeholder = request.placeholderForCreatedAssetCollection
         }) { success, error in
             DispatchQueue.main.async {
-                if success, let id = placeholder?.localIdentifier {
-                    completion(id, nil)
+                if success, let localIdentifier = placeholder?.localIdentifier {
+                    completion(localIdentifier, nil)
                 } else {
                     completion(nil, error)
                 }
@@ -91,77 +111,158 @@ class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObs
         }
     }
 
-    // Add the current results (your filtered list) to an album by id
     private func addAssets(_ assets: [PHAsset], toAlbumId localId: String, completion: @escaping (Bool, Error?) -> Void) {
-        let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
-        guard let album = fetch.firstObject else {
-            completion(false, NSError(domain: "PicSea", code: -1, userInfo: [NSLocalizedDescriptionKey: "Album not found"]))
+        let fetchResult = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
+
+        guard let album = fetchResult.firstObject else {
+            let error = NSError(
+                domain: "PicSea",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Album not found"]
+            )
+            completion(false, error)
             return
         }
-        guard !assets.isEmpty else { completion(true, nil); return }
+
+        guard !assets.isEmpty else {
+            completion(true, nil)
+            return
+        }
 
         PHPhotoLibrary.shared().performChanges({
-            if let change = PHAssetCollectionChangeRequest(for: album) {
-                change.addAssets(assets as NSArray)
+            if let changeRequest = PHAssetCollectionChangeRequest(for: album) {
+                changeRequest.addAssets(assets as NSArray)
             }
         }) { success, error in
-            DispatchQueue.main.async { completion(success, error) }
+            DispatchQueue.main.async {
+                completion(success, error)
+            }
         }
     }
 
-    // Public method you call from the button
     func saveResultsToAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
-        // Use your filtered list if you have one; otherwise use `assets`
-        // If you created `shownAssets`, swap it in here.
-        let assetsToSave: [PHAsset] = self.assets
+        let assetsToSave = assets
 
-        createAlbumIfNeeded(named: name) { albumId, err in
-            guard let albumId = albumId, err == nil else {
-                completion(false, err)
+        createAlbumIfNeeded(named: name) { albumId, error in
+            guard let albumId, error == nil else {
+                completion(false, error)
                 return
             }
+
             self.addAssets(assetsToSave, toAlbumId: albumId, completion: completion)
         }
     }
-
-    // Add the currently displayed results to the given album (by local id)
-    func addShownAssets(toAlbumWithLocalId localId: String, completion: @escaping (Bool, Error?) -> Void) {
-        let fetch = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [localId], options: nil)
-        guard let album = fetch.firstObject else {
-            completion(false, NSError(domain: "PicSea", code: -1, userInfo: [NSLocalizedDescriptionKey: "Album not found"]))
-            return
-        }
-        // Use shownAssets if you have it; if not, use assets (your current array)
-        let assetsToAdd: [PHAsset] = (self.value(forKey: "shownAssets") as? [PHAsset]) ?? self.assets
-        guard !assetsToAdd.isEmpty else { completion(true, nil); return }
-
-        PHPhotoLibrary.shared().performChanges({
-            if let change = PHAssetCollectionChangeRequest(for: album) {
-                change.addAssets(assetsToAdd as NSArray)
+    
+    func saveSpecificAssetsToAlbum(_ assets: [PHAsset], named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        createAlbumIfNeeded(named: name) { albumId, error in
+            guard let albumId, error == nil else {
+                completion(false, error)
+                return
             }
-        }) { success, error in
-            DispatchQueue.main.async { completion(success, error) }
+
+            self.addAssets(assets, toAlbumId: albumId, completion: completion)
         }
     }
+}
 
-    deinit {
-        PHPhotoLibrary.shared().unregisterChangeObserver(self)
-    }
-    }
-    // MARK: - Folder / Album Creation
 extension PhotoLibraryViewModel {
-    // Fake search: if prompt contains a 4-digit year, filter by that year. Otherwise show first 200 items.
-    func search(prompt: String) -> [PHAsset] {
-        let lower = prompt.lowercased()
-        let yearMatch = lower.range(of: #"\b(19|20)\d{2}\b"#, options: .regularExpression)
-        if yearMatch != nil {
-            return assets.filter { asset in
-                guard let d = asset.creationDate else { return false }
-                let y = Calendar.current.component(.year, from: d)
-                return lower.contains("\(y)")
+    @MainActor
+    func runAIClassification() async -> [PHAsset] {
+        await classifier.classify(assets: assets)
+    }
+
+    @MainActor
+    func search(in assets: [PHAsset], prompt: String) async -> [PHAsset] {
+        let query = prompt
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !query.isEmpty else {
+            isFilteredResults = false
+            return allAssets
+        }
+
+        isFilteredResults = true
+
+        var filteredAssets = assets
+
+        if let year = Int(query), query.count == 4 {
+            filteredAssets = filteredAssets.filter { asset in
+                guard let date = asset.creationDate else { return false }
+                return Calendar.current.component(.year, from: date) == year
             }
-        } else {
-            return Array(assets.prefix(200))
+        }
+
+        return await classifier.classify(assets: filteredAssets)
+    }
+    
+    @MainActor
+    func search(in assets: [PHAsset], query: PhotoSearchQuery) async -> [PHAsset] {
+        var filteredAssets = assets
+        let calendar = Calendar.current
+        let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
+
+        if let startDate = query.startDate {
+            let normalizedStartDate = calendar.startOfDay(for: startDate)
+            filteredAssets = filteredAssets.filter { asset in
+                guard let creationDate = asset.creationDate else { return false }
+                return creationDate >= normalizedStartDate
+            }
+        }
+
+        if let endDate = query.endDate {
+            guard let normalizedEndDate = calendar.date(byAdding: DateComponents(day: 1, second: -1),
+                                                        to: calendar.startOfDay(for: endDate)) else {
+                return []
+            }
+            filteredAssets = filteredAssets.filter { asset in
+                guard let creationDate = asset.creationDate else { return false }
+                return creationDate <= normalizedEndDate
+            }
+        }
+
+        switch query.mediaType {
+        case .any:
+            break
+        case .photo:
+            filteredAssets = filteredAssets.filter {
+                $0.mediaType == .image &&
+                !PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
+            }
+        case .screenshot:
+            filteredAssets = filteredAssets.filter {
+                PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
+            }
+        case .selfie:
+            break
+        }
+
+        let blurryAssetIDs = Set(
+            await PhotoLibraryManager.blurryAssets(from: filteredAssets).map(\.localIdentifier)
+        )
+
+        if !query.includeBlurred {
+            filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
+        }
+
+        if !query.concepts.isEmpty {
+            filteredAssets = await classifier.classify(assets: filteredAssets)
+        }
+
+        return filteredAssets
+    }
+
+
+    func requestThumbnail(for asset: PHAsset) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 256, height: 256),
+                contentMode: .aspectFill,
+                options: nil
+            ) { image, _ in
+                continuation.resume(returning: image)
+            }
         }
     }
 }
