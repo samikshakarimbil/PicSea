@@ -6,6 +6,7 @@
 import Foundation
 import Photos
 import UIKit
+import Vision
 
 struct PhotoLibraryManager {
 
@@ -126,6 +127,62 @@ struct PhotoLibraryManager {
         }
     }
 
+    static func duplicateAssets(from assets: [PHAsset],
+                                similarityThreshold: Float = 0.12,
+                                targetSize: CGSize = CGSize(width: 224, height: 224)) async -> [PHAsset] {
+        let featurePrints = await withTaskGroup(of: (Int, PHAsset, VNFeaturePrintObservation)?.self) { group in
+            for (index, asset) in assets.enumerated() {
+                group.addTask {
+                    guard let image = await requestImage(for: asset, targetSize: targetSize),
+                          let featurePrint = featurePrintObservation(for: image) else {
+                        return nil
+                    }
+
+                    return (index, asset, featurePrint)
+                }
+            }
+
+            var observations: [(Int, PHAsset, VNFeaturePrintObservation)] = []
+            for await result in group {
+                if let result {
+                    observations.append(result)
+                }
+            }
+
+            return observations.sorted { $0.0 < $1.0 }
+        }
+
+        guard featurePrints.count > 1 else {
+            return []
+        }
+
+        var duplicateIndices = Set<Int>()
+
+        for leftIndex in 0..<(featurePrints.count - 1) {
+            let leftObservation = featurePrints[leftIndex].2
+
+            for rightIndex in (leftIndex + 1)..<featurePrints.count {
+                let rightObservation = featurePrints[rightIndex].2
+                var distance: Float = .greatestFiniteMagnitude
+
+                do {
+                    try leftObservation.computeDistance(&distance, to: rightObservation)
+                } catch {
+                    continue
+                }
+
+                if distance <= similarityThreshold {
+                    duplicateIndices.insert(leftIndex)
+                    duplicateIndices.insert(rightIndex)
+                }
+            }
+        }
+
+        return duplicateIndices
+            .sorted()
+            .map { featurePrints[$0].1 }
+    }
+
     static func createAlbum(named name: String,
                             assets: [PHAsset],
                             completion: @escaping (Bool) -> Void) {
@@ -199,6 +256,24 @@ struct PhotoLibraryManager {
         } / count
 
         return variance.squareRoot()
+    }
+
+    private static func featurePrintObservation(for image: UIImage) -> VNFeaturePrintObservation? {
+        guard let cgImage = image.cgImage else {
+            return nil
+        }
+
+        let request = VNGenerateImageFeaturePrintRequest()
+        request.imageCropAndScaleOption = .scaleFit
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+
+        do {
+            try handler.perform([request])
+            return request.results?.first as? VNFeaturePrintObservation
+        } catch {
+            return nil
+        }
     }
 
     private static func grayscalePixels(for image: UIImage) -> (width: Int, height: Int, pixels: [UInt8])? {

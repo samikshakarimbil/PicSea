@@ -36,6 +36,10 @@ struct PromptParser {
             query.includeBlurred = true
         }
 
+        if words.contains("duplicate") || words.contains("duplicates") || words.contains("duplicated") {
+            query.onlyDuplicates = true
+        }
+
         // Year detection
         if let yearWord = words.first(where: { $0.count == 4 && Int($0) != nil }),
            let year = Int(yearWord) {
@@ -58,7 +62,7 @@ struct PromptParser {
             "show", "me", "find", "photos", "photo", "pictures", "pics",
             "from", "in", "of", "with", "and", "my",
             "screenshot", "screenshots", "selfie", "selfies",
-            "blurry", "blurred"
+            "blurry", "blurred", "duplicate", "duplicates", "duplicated"
         ]
 
         query.concepts = words.filter { word in

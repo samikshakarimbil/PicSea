@@ -185,6 +185,7 @@ struct SearchSessionView: View {
             .pickerStyle(.segmented)
 
             Toggle("Include blurry photos", isOn: $query.includeBlurred)
+            Toggle("Only duplicate photos", isOn: $query.onlyDuplicates)
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -254,6 +255,10 @@ struct SearchSessionView: View {
 
         if query.includeBlurred {
             parts.append("Blurry included")
+        }
+
+        if query.onlyDuplicates {
+            parts.append("Only duplicates")
         }
 
         return parts.isEmpty ? "More filters" : parts.joined(separator: " • ")
@@ -335,6 +340,10 @@ struct SearchSessionView: View {
 
         if !query.includeBlurred {
             query.includeBlurred = parsed.includeBlurred
+        }
+
+        if !query.onlyDuplicates {
+            query.onlyDuplicates = parsed.onlyDuplicates
         }
 
         applyFilters()

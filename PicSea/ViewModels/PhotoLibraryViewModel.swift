@@ -245,6 +245,10 @@ extension PhotoLibraryViewModel {
             filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
         }
 
+        if query.onlyDuplicates {
+            filteredAssets = await PhotoLibraryManager.duplicateAssets(from: filteredAssets)
+        }
+
         if !query.concepts.isEmpty {
             filteredAssets = await classifier.classify(assets: filteredAssets)
         }
