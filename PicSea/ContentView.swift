@@ -82,6 +82,8 @@ struct ContentView: View {
                     HStack(spacing: 8) {
                         TextField("Enter your prompt...", text: $promptText)
                             .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                             .submitLabel(.done)
                             .onSubmit {
                                 submit()
@@ -123,7 +125,9 @@ struct ContentView: View {
                             ? "Your current results were saved in \"\(finalName)\"."
                             : (error?.localizedDescription ?? "Unknown error.")
                         showAlert = true
+#if !targetEnvironment(simulator)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
                     }
                 }
             }

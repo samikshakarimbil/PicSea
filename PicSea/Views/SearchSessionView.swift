@@ -22,6 +22,7 @@ struct SearchSessionView: View {
     @State private var showAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
+    @State private var isApplyingFilters = false
 
     private let parser = PromptParser()
 
@@ -60,6 +61,13 @@ struct SearchSessionView: View {
                         .padding(.top, 8)
                         .padding(.bottom, 140)
                     }
+                }
+
+                if isApplyingFilters {
+                    ProgressView("Applying filters...")
+                        .padding(16)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
 
                 VStack(spacing: 10) {
@@ -115,7 +123,9 @@ struct SearchSessionView: View {
                         ? "Your selected results were saved in \"\(finalName)\"."
                         : (error?.localizedDescription ?? "Unknown error.")
                     showAlert = true
+#if !targetEnvironment(simulator)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
                 }
             }
         }
@@ -133,6 +143,8 @@ struct SearchSessionView: View {
         HStack(spacing: 8) {
             TextField("Enter your prompt...", text: $promptText)
                 .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
                 .submitLabel(.search)
                 .onSubmit {
                     applyPromptAndRefresh()
@@ -142,7 +154,7 @@ struct SearchSessionView: View {
                 applyPromptAndRefresh()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isApplyingFilters || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -224,10 +236,17 @@ struct SearchSessionView: View {
                 }
             }
 
-            Button("Apply Filters") {
+            Button {
                 applyFilters()
+            } label: {
+                if isApplyingFilters {
+                    ProgressView()
+                } else {
+                    Text("Apply Filters")
+                }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(isApplyingFilters)
         }
         .padding(12)
         .background(Color(.systemBackground))
@@ -351,11 +370,13 @@ struct SearchSessionView: View {
 
     private func applyFilters() {
         selectedAssetIDs.removeAll()
+        isApplyingFilters = true
 
         Task {
             let results = await vm.search(in: vm.allAssets, query: query)
             vm.assets = results
             vm.isFilteredResults = true
+            isApplyingFilters = false
         }
     }
 

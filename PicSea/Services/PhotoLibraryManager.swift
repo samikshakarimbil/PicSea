@@ -9,6 +9,7 @@ import UIKit
 import Vision
 
 struct PhotoLibraryManager {
+    private static let maxConcurrentImageAnalysisTasks = 4
 
     static func requestAuthorization(completion: @escaping (Bool) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
@@ -52,14 +53,8 @@ struct PhotoLibraryManager {
     }
 
     static func isScreenshotAsset(_ asset: PHAsset, screenshotAssetIdentifiers: Set<String>) -> Bool {
-        if asset.mediaSubtypes.contains(.photoScreenshot) || screenshotAssetIdentifiers.contains(asset.localIdentifier) {
-            return true
-        }
-
-        let resources = PHAssetResource.assetResources(for: asset)
-        return resources.contains { resource in
-            resource.originalFilename.localizedCaseInsensitiveContains("screenshot")
-        }
+        asset.mediaSubtypes.contains(.photoScreenshot) ||
+        screenshotAssetIdentifiers.contains(asset.localIdentifier)
     }
 
     static func requestImage(for asset: PHAsset,
@@ -98,55 +93,81 @@ struct PhotoLibraryManager {
     static func blurryAssets(from assets: [PHAsset],
                              threshold: Float = 18,
                              targetSize: CGSize = CGSize(width: 256, height: 256)) async -> [PHAsset] {
-        await withTaskGroup(of: (Int, PHAsset)?.self) { group in
-            for (index, asset) in assets.enumerated() {
+        let indexedAssets = Array(assets.enumerated())
+        let workerCount = min(maxConcurrentImageAnalysisTasks, indexedAssets.count)
+
+        guard workerCount > 0 else {
+            return []
+        }
+
+        let matches = await withTaskGroup(of: [(Int, PHAsset)].self) { group in
+            for workerIndex in 0..<workerCount {
                 group.addTask {
-                    guard let image = await requestImage(for: asset, targetSize: targetSize) else {
-                        return nil
+                    var workerMatches: [(Int, PHAsset)] = []
+                    var currentIndex = workerIndex
+
+                    while currentIndex < indexedAssets.count {
+                        let (index, asset) = indexedAssets[currentIndex]
+
+                        if let image = await requestImage(for: asset, targetSize: targetSize),
+                           sharpnessScore(for: image) < threshold {
+                            workerMatches.append((index, asset))
+                        }
+
+                        currentIndex += workerCount
                     }
 
-                    let score = sharpnessScore(for: image)
-                    guard score < threshold else {
-                        return nil
-                    }
-
-                    return (index, asset)
+                    return workerMatches
                 }
             }
 
             var matches: [(Int, PHAsset)] = []
-            for await result in group {
-                if let result {
-                    matches.append(result)
-                }
+            for await workerMatches in group {
+                matches.append(contentsOf: workerMatches)
             }
 
             return matches
-                .sorted { $0.0 < $1.0 }
-                .map(\.1)
         }
+
+        return matches
+            .sorted { $0.0 < $1.0 }
+            .map(\.1)
     }
 
     static func duplicateAssets(from assets: [PHAsset],
                                 similarityThreshold: Float = 0.12,
                                 targetSize: CGSize = CGSize(width: 224, height: 224)) async -> [PHAsset] {
-        let featurePrints = await withTaskGroup(of: (Int, PHAsset, VNFeaturePrintObservation)?.self) { group in
-            for (index, asset) in assets.enumerated() {
+        let indexedAssets = Array(assets.enumerated())
+        let workerCount = min(maxConcurrentImageAnalysisTasks, indexedAssets.count)
+
+        guard workerCount > 0 else {
+            return []
+        }
+
+        let featurePrints = await withTaskGroup(of: [(Int, PHAsset, VNFeaturePrintObservation)].self) { group in
+            for workerIndex in 0..<workerCount {
                 group.addTask {
-                    guard let image = await requestImage(for: asset, targetSize: targetSize),
-                          let featurePrint = featurePrintObservation(for: image) else {
-                        return nil
+                    var workerFeaturePrints: [(Int, PHAsset, VNFeaturePrintObservation)] = []
+                    var currentIndex = workerIndex
+
+                    while currentIndex < indexedAssets.count {
+                        let (index, asset) = indexedAssets[currentIndex]
+
+                        if let image = await requestImage(for: asset, targetSize: targetSize),
+                           let featurePrint = featurePrintObservation(for: image) {
+                            workerFeaturePrints.append((index, asset, featurePrint))
+                        }
+
+                        currentIndex += workerCount
                     }
 
-                    return (index, asset, featurePrint)
+                    return workerFeaturePrints
                 }
             }
 
             var observations: [(Int, PHAsset, VNFeaturePrintObservation)] = []
-            for await result in group {
-                if let result {
-                    observations.append(result)
-                }
+            for await workerFeaturePrints in group {
+                observations.append(contentsOf: workerFeaturePrints)
             }
 
             return observations.sorted { $0.0 < $1.0 }

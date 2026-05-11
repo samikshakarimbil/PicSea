@@ -200,7 +200,6 @@ extension PhotoLibraryViewModel {
     func search(in assets: [PHAsset], query: PhotoSearchQuery) async -> [PHAsset] {
         var filteredAssets = assets
         let calendar = Calendar.current
-        let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
 
         if let startDate = query.startDate {
             let normalizedStartDate = calendar.startOfDay(for: startDate)
@@ -225,11 +224,13 @@ extension PhotoLibraryViewModel {
         case .any:
             break
         case .photo:
+            let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
             filteredAssets = filteredAssets.filter {
                 $0.mediaType == .image &&
                 !PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
             }
         case .screenshot:
+            let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
             filteredAssets = filteredAssets.filter {
                 PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
             }
@@ -237,11 +238,10 @@ extension PhotoLibraryViewModel {
             break
         }
 
-        let blurryAssetIDs = Set(
-            await PhotoLibraryManager.blurryAssets(from: filteredAssets).map(\.localIdentifier)
-        )
-
         if !query.includeBlurred {
+            let blurryAssetIDs = Set(
+                await PhotoLibraryManager.blurryAssets(from: filteredAssets).map(\.localIdentifier)
+            )
             filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
         }
 
