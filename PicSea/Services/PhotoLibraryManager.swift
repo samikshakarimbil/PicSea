@@ -11,6 +11,11 @@ import Vision
 struct PhotoLibraryManager {
     private static let maxConcurrentImageAnalysisTasks = 4
 
+    private struct AssetFeaturePrints {
+        let assetIndex: Int
+        let observations: [VNFeaturePrintObservation]
+    }
+
     static func requestAuthorization(completion: @escaping (Bool) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
             DispatchQueue.main.async {
@@ -135,27 +140,67 @@ struct PhotoLibraryManager {
     }
 
     static func duplicateAssets(from assets: [PHAsset],
-                                similarityThreshold: Float = 0.12,
+                                minimumSimilarity: Float = 0.8,
+                                neighborWindow: Int = 20,
                                 targetSize: CGSize = CGSize(width: 224, height: 224)) async -> [PHAsset] {
+        let groups = await similarAssetIndexGroups(
+            from: assets,
+            minimumSimilarity: minimumSimilarity,
+            neighborWindow: neighborWindow,
+            targetSize: targetSize
+        )
+
+        return Set(groups.flatMap { $0 })
+            .sorted()
+            .map { assets[$0] }
+    }
+
+    static func assetsExcludingDuplicateExtras(from assets: [PHAsset],
+                                               minimumSimilarity: Float = 0.8,
+                                               neighborWindow: Int = 20,
+                                               targetSize: CGSize = CGSize(width: 224, height: 224)) async -> [PHAsset] {
+        let groups = await similarAssetIndexGroups(
+            from: assets,
+            minimumSimilarity: minimumSimilarity,
+            neighborWindow: neighborWindow,
+            targetSize: targetSize
+        )
+
+        let duplicateExtraIndices = Set(groups.flatMap { $0.dropFirst() })
+        return assets.enumerated().compactMap { index, asset in
+            duplicateExtraIndices.contains(index) ? nil : asset
+        }
+    }
+
+    private static func similarAssetIndexGroups(from assets: [PHAsset],
+                                                minimumSimilarity: Float,
+                                                neighborWindow: Int,
+                                                targetSize: CGSize) async -> [[Int]] {
         let indexedAssets = Array(assets.enumerated())
         let workerCount = min(maxConcurrentImageAnalysisTasks, indexedAssets.count)
 
-        guard workerCount > 0 else {
+        guard workerCount > 0, neighborWindow > 0 else {
             return []
         }
 
-        let featurePrints = await withTaskGroup(of: [(Int, PHAsset, VNFeaturePrintObservation)].self) { group in
+        let featurePrints = await withTaskGroup(of: [AssetFeaturePrints].self) { group in
             for workerIndex in 0..<workerCount {
                 group.addTask {
-                    var workerFeaturePrints: [(Int, PHAsset, VNFeaturePrintObservation)] = []
+                    var workerFeaturePrints: [AssetFeaturePrints] = []
                     var currentIndex = workerIndex
 
                     while currentIndex < indexedAssets.count {
                         let (index, asset) = indexedAssets[currentIndex]
 
                         if let image = await requestImage(for: asset, targetSize: targetSize),
-                           let featurePrint = featurePrintObservation(for: image) {
-                            workerFeaturePrints.append((index, asset, featurePrint))
+                           !Task.isCancelled {
+                            let observations = featurePrintObservations(for: image)
+
+                            if !observations.isEmpty {
+                                workerFeaturePrints.append(
+                                    AssetFeaturePrints(assetIndex: index, observations: observations)
+                                )
+                            }
                         }
 
                         currentIndex += workerCount
@@ -165,43 +210,67 @@ struct PhotoLibraryManager {
                 }
             }
 
-            var observations: [(Int, PHAsset, VNFeaturePrintObservation)] = []
+            var observations: [AssetFeaturePrints] = []
             for await workerFeaturePrints in group {
                 observations.append(contentsOf: workerFeaturePrints)
             }
 
-            return observations.sorted { $0.0 < $1.0 }
+            return observations.sorted { $0.assetIndex < $1.assetIndex }
         }
 
         guard featurePrints.count > 1 else {
             return []
         }
 
-        var duplicateIndices = Set<Int>()
+        var groupParents = Dictionary(uniqueKeysWithValues: featurePrints.map { ($0.assetIndex, $0.assetIndex) })
+        let normalizedMinimumSimilarity = min(max(minimumSimilarity, 0), 1)
+
+        func root(of index: Int) -> Int {
+            var current = index
+
+            while let parent = groupParents[current], parent != current {
+                current = parent
+            }
+
+            return current
+        }
+
+        func merge(_ leftIndex: Int, _ rightIndex: Int) {
+            let leftRoot = root(of: leftIndex)
+            let rightRoot = root(of: rightIndex)
+
+            guard leftRoot != rightRoot else { return }
+            groupParents[rightRoot] = leftRoot
+        }
 
         for leftIndex in 0..<(featurePrints.count - 1) {
-            let leftObservation = featurePrints[leftIndex].2
+            let leftFeaturePrints = featurePrints[leftIndex]
 
             for rightIndex in (leftIndex + 1)..<featurePrints.count {
-                let rightObservation = featurePrints[rightIndex].2
-                var distance: Float = .greatestFiniteMagnitude
-
-                do {
-                    try leftObservation.computeDistance(&distance, to: rightObservation)
-                } catch {
-                    continue
+                let rightFeaturePrints = featurePrints[rightIndex]
+                guard rightFeaturePrints.assetIndex - leftFeaturePrints.assetIndex <= neighborWindow else {
+                    break
                 }
 
-                if distance <= similarityThreshold {
-                    duplicateIndices.insert(leftIndex)
-                    duplicateIndices.insert(rightIndex)
+                if bestSimilarity(
+                    between: leftFeaturePrints.observations,
+                    and: rightFeaturePrints.observations
+                ) >= normalizedMinimumSimilarity {
+                    merge(leftFeaturePrints.assetIndex, rightFeaturePrints.assetIndex)
                 }
             }
         }
 
-        return duplicateIndices
-            .sorted()
-            .map { featurePrints[$0].1 }
+        var groupedIndices: [Int: [Int]] = [:]
+
+        for featurePrint in featurePrints {
+            groupedIndices[root(of: featurePrint.assetIndex), default: []].append(featurePrint.assetIndex)
+        }
+
+        return groupedIndices.values
+            .map { $0.sorted() }
+            .filter { $0.count > 1 }
+            .sorted { $0[0] < $1[0] }
     }
 
     static func createAlbum(named name: String,
@@ -279,15 +348,48 @@ struct PhotoLibraryManager {
         return variance.squareRoot()
     }
 
-    private static func featurePrintObservation(for image: UIImage) -> VNFeaturePrintObservation? {
+    private static func featurePrintObservations(for image: UIImage) -> [VNFeaturePrintObservation] {
         guard let cgImage = image.cgImage else {
-            return nil
+            return []
         }
 
-        let request = VNGenerateImageFeaturePrintRequest()
-        request.imageCropAndScaleOption = .scaleFit
+        var observations: [VNFeaturePrintObservation] = []
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        if let fullImageObservation = featurePrintObservation(for: cgImage, cropAndScaleOption: .scaleFit) {
+            observations.append(fullImageObservation)
+        }
+
+        if let centerCropObservation = featurePrintObservation(for: cgImage, cropAndScaleOption: .centerCrop) {
+            observations.append(centerCropObservation)
+        }
+
+        let cropSpecs: [(scale: CGFloat, center: CGPoint)] = [
+            (0.72, CGPoint(x: 0.5, y: 0.5)),
+            (0.55, CGPoint(x: 0.5, y: 0.5)),
+            (0.65, CGPoint(x: 0.35, y: 0.35)),
+            (0.65, CGPoint(x: 0.65, y: 0.35)),
+            (0.65, CGPoint(x: 0.35, y: 0.65)),
+            (0.65, CGPoint(x: 0.65, y: 0.65))
+        ]
+
+        for cropSpec in cropSpecs {
+            guard let croppedImage = croppedImage(from: cgImage, scale: cropSpec.scale, center: cropSpec.center),
+                  let cropObservation = featurePrintObservation(for: croppedImage, cropAndScaleOption: .scaleFit) else {
+                continue
+            }
+
+            observations.append(cropObservation)
+        }
+
+        return observations
+    }
+
+    private static func featurePrintObservation(for image: CGImage,
+                                                cropAndScaleOption: VNImageCropAndScaleOption) -> VNFeaturePrintObservation? {
+        let request = VNGenerateImageFeaturePrintRequest()
+        request.imageCropAndScaleOption = cropAndScaleOption
+
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
 
         do {
             try handler.perform([request])
@@ -295,6 +397,53 @@ struct PhotoLibraryManager {
         } catch {
             return nil
         }
+    }
+
+    private static func bestSimilarity(between leftObservations: [VNFeaturePrintObservation],
+                                       and rightObservations: [VNFeaturePrintObservation]) -> Float {
+        var bestSimilarity: Float = 0
+
+        for leftObservation in leftObservations {
+            for rightObservation in rightObservations {
+                var distance: Float = .greatestFiniteMagnitude
+
+                do {
+                    try leftObservation.computeDistance(&distance, to: rightObservation)
+                    bestSimilarity = max(bestSimilarity, similarityScore(forDistance: distance))
+                } catch {
+                    continue
+                }
+            }
+        }
+
+        return bestSimilarity
+    }
+
+    private static func similarityScore(forDistance distance: Float) -> Float {
+        guard distance.isFinite, distance >= 0 else {
+            return 0
+        }
+
+        return max(0, 1 - (distance / 2))
+    }
+
+    private static func croppedImage(from image: CGImage, scale: CGFloat, center: CGPoint) -> CGImage? {
+        guard scale > 0, scale < 1 else {
+            return nil
+        }
+
+        let cropWidth = CGFloat(image.width) * scale
+        let cropHeight = CGFloat(image.height) * scale
+        let originX = min(max((CGFloat(image.width) * center.x) - (cropWidth / 2), 0), CGFloat(image.width) - cropWidth)
+        let originY = min(max((CGFloat(image.height) * center.y) - (cropHeight / 2), 0), CGFloat(image.height) - cropHeight)
+        let cropRect = CGRect(
+            x: originX,
+            y: originY,
+            width: cropWidth,
+            height: cropHeight
+        ).integral
+
+        return image.cropping(to: cropRect)
     }
 
     private static func grayscalePixels(for image: UIImage) -> (width: Int, height: Int, pixels: [UInt8])? {

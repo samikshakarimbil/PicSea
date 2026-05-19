@@ -37,7 +37,7 @@ struct PromptParser {
         }
 
         if words.contains("duplicate") || words.contains("duplicates") || words.contains("duplicated") {
-            query.onlyDuplicates = true
+            query.duplicateFilter = .onlyDuplicates
         }
 
         // Year detection

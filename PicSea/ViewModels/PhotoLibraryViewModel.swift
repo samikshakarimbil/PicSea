@@ -245,7 +245,12 @@ extension PhotoLibraryViewModel {
             filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
         }
 
-        if query.onlyDuplicates {
+        switch query.duplicateFilter {
+        case .include:
+            break
+        case .exclude:
+            filteredAssets = await PhotoLibraryManager.assetsExcludingDuplicateExtras(from: filteredAssets)
+        case .onlyDuplicates:
             filteredAssets = await PhotoLibraryManager.duplicateAssets(from: filteredAssets)
         }
 
