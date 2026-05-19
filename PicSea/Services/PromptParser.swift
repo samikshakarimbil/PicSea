@@ -34,6 +34,7 @@ struct PromptParser {
         // Simple blur detection
         if words.contains("blurry") || words.contains("blurred") {
             query.includeBlurred = true
+            query.onlyBlurry = true
         }
 
         if words.contains("duplicate") || words.contains("duplicates") || words.contains("duplicated") {

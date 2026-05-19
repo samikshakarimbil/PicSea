@@ -57,9 +57,45 @@ struct PhotoLibraryManager {
         return identifiers
     }
 
+    static func selfieAssetIdentifiers() -> Set<String> {
+        let collections = PHAssetCollection.fetchAssetCollections(
+            with: .smartAlbum,
+            subtype: .smartAlbumSelfPortraits,
+            options: nil
+        )
+
+        guard let selfiesAlbum = collections.firstObject else {
+            return []
+        }
+
+        let selfieAssets = PHAsset.fetchAssets(in: selfiesAlbum, options: nil)
+        var identifiers = Set<String>()
+
+        selfieAssets.enumerateObjects { asset, _, _ in
+            identifiers.insert(asset.localIdentifier)
+        }
+
+        return identifiers
+    }
+
     static func isScreenshotAsset(_ asset: PHAsset, screenshotAssetIdentifiers: Set<String>) -> Bool {
         asset.mediaSubtypes.contains(.photoScreenshot) ||
         screenshotAssetIdentifiers.contains(asset.localIdentifier)
+    }
+
+    static func asset(for localIdentifier: String) -> PHAsset? {
+        PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil).firstObject
+    }
+
+    static func assets(for localIdentifiers: [String]) -> [PHAsset] {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: localIdentifiers, options: nil)
+        var assetsByID: [String: PHAsset] = [:]
+
+        fetchResult.enumerateObjects { asset, _, _ in
+            assetsByID[asset.localIdentifier] = asset
+        }
+
+        return localIdentifiers.compactMap { assetsByID[$0] }
     }
 
     static func requestImage(for asset: PHAsset,
@@ -153,6 +189,22 @@ struct PhotoLibraryManager {
         return Set(groups.flatMap { $0 })
             .sorted()
             .map { assets[$0] }
+    }
+
+    static func similarAssetIdentifierGroups(from assets: [PHAsset],
+                                             minimumSimilarity: Float = 0.8,
+                                             neighborWindow: Int = 20,
+                                             targetSize: CGSize = CGSize(width: 224, height: 224)) async -> [[String]] {
+        let groups = await similarAssetIndexGroups(
+            from: assets,
+            minimumSimilarity: minimumSimilarity,
+            neighborWindow: neighborWindow,
+            targetSize: targetSize
+        )
+
+        return groups.map { group in
+            group.map { assets[$0].localIdentifier }
+        }
     }
 
     static func assetsExcludingDuplicateExtras(from assets: [PHAsset],
@@ -348,6 +400,71 @@ struct PhotoLibraryManager {
         return variance.squareRoot()
     }
 
+    static func blurScore(for image: UIImage) -> Float {
+        sharpnessScore(for: image)
+    }
+
+    static func perceptualHash(for image: UIImage) -> String? {
+        guard let grayscalePixels = grayscalePixels(for: image, width: 8, height: 8),
+              grayscalePixels.pixels.count == 64 else {
+            return nil
+        }
+
+        let average = grayscalePixels.pixels.reduce(0) { $0 + Int($1) } / grayscalePixels.pixels.count
+        var hash: UInt64 = 0
+
+        for pixel in grayscalePixels.pixels {
+            hash <<= 1
+
+            if Int(pixel) >= average {
+                hash |= 1
+            }
+        }
+
+        return String(format: "%016llx", hash)
+    }
+
+    static func perceptualHashes(for image: UIImage) -> [String] {
+        guard let cgImage = image.cgImage else {
+            return []
+        }
+
+        var hashes: [String] = []
+
+        if let fullImageHash = perceptualHash(for: image) {
+            hashes.append(fullImageHash)
+        }
+
+        let cropSpecs: [(scale: CGFloat, center: CGPoint)] = [
+            (0.72, CGPoint(x: 0.5, y: 0.5)),
+            (0.55, CGPoint(x: 0.5, y: 0.5)),
+            (0.65, CGPoint(x: 0.35, y: 0.35)),
+            (0.65, CGPoint(x: 0.65, y: 0.35)),
+            (0.65, CGPoint(x: 0.35, y: 0.65)),
+            (0.65, CGPoint(x: 0.65, y: 0.65))
+        ]
+
+        for cropSpec in cropSpecs {
+            guard let croppedImage = croppedImage(from: cgImage, scale: cropSpec.scale, center: cropSpec.center),
+                  let cropHash = perceptualHash(for: UIImage(cgImage: croppedImage)) else {
+                continue
+            }
+
+            hashes.append(cropHash)
+        }
+
+        return Array(Set(hashes)).sorted()
+    }
+
+    static func hammingDistance(between leftHash: String, and rightHash: String) -> Int? {
+        guard let leftValue = UInt64(leftHash, radix: 16),
+              let rightValue = UInt64(rightHash, radix: 16) else {
+            return nil
+        }
+
+        return (leftValue ^ rightValue).nonzeroBitCount
+    }
+
     private static func featurePrintObservations(for image: UIImage) -> [VNFeaturePrintObservation] {
         guard let cgImage = image.cgImage else {
             return []
@@ -446,13 +563,13 @@ struct PhotoLibraryManager {
         return image.cropping(to: cropRect)
     }
 
-    private static func grayscalePixels(for image: UIImage) -> (width: Int, height: Int, pixels: [UInt8])? {
+    private static func grayscalePixels(for image: UIImage, width targetWidth: Int? = nil, height targetHeight: Int? = nil) -> (width: Int, height: Int, pixels: [UInt8])? {
         guard let cgImage = image.cgImage else {
             return nil
         }
 
-        let width = cgImage.width
-        let height = cgImage.height
+        let width = targetWidth ?? cgImage.width
+        let height = targetHeight ?? cgImage.height
         let bytesPerRow = width
         var pixels = [UInt8](repeating: 0, count: width * height)
 
