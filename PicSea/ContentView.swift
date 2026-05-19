@@ -8,6 +8,7 @@ import UIKit
 
 struct ContentView: View {
     @StateObject var vm: PhotoLibraryViewModel
+    @AppStorage("duplicateSimilaritySensitivity") private var duplicateSensitivityRawValue = DuplicateSimilaritySensitivity.medium.rawValue
 
     @State private var promptText = ""
     @State private var query = PhotoSearchQuery()
@@ -77,6 +78,12 @@ struct ContentView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
+                    if !isShowingResults {
+                        settingsMenu
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
                     if isShowingResults && !vm.assetIDs.isEmpty {
                         Button(selectionButtonTitle) {
                             selectionButtonTapped()
@@ -96,7 +103,11 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+                vm.setDuplicateSensitivity(duplicateSensitivity)
                 vm.loadPhotos()
+            }
+            .onChange(of: duplicateSensitivityRawValue) { _, _ in
+                vm.setDuplicateSensitivity(duplicateSensitivity)
             }
             .safeAreaInset(edge: .bottom) {
                 bottomControls
@@ -143,6 +154,31 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
         }
         .padding()
+    }
+
+    private var settingsMenu: some View {
+        Menu {
+            Picker("Duplicate Similarity", selection: duplicateSensitivityBinding) {
+                ForEach(DuplicateSimilaritySensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+        } label: {
+            Image(systemName: "gearshape")
+        }
+    }
+
+    private var duplicateSensitivity: DuplicateSimilaritySensitivity {
+        DuplicateSimilaritySensitivity(rawValue: duplicateSensitivityRawValue) ?? .medium
+    }
+
+    private var duplicateSensitivityBinding: Binding<DuplicateSimilaritySensitivity> {
+        Binding {
+            duplicateSensitivity
+        } set: { newValue in
+            duplicateSensitivityRawValue = newValue.rawValue
+            vm.setDuplicateSensitivity(newValue)
+        }
     }
 
     private var bottomControls: some View {

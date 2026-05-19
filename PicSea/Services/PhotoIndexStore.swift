@@ -11,7 +11,6 @@ import SwiftData
 final class PhotoIndexStore {
     nonisolated static let currentIndexVersion = 2
     nonisolated static let defaultDuplicateWindow = 20
-    nonisolated static let mediumDuplicateHashDistance = 14
     nonisolated static let blurryThreshold: Float = 18
 
     private let context: ModelContext
@@ -98,11 +97,12 @@ final class PhotoIndexStore {
         record.indexVersion = Self.currentIndexVersion
     }
 
-    func rebuildDuplicateGroups(window: Int = defaultDuplicateWindow,
-                                maxHashDistance: Int = mediumDuplicateHashDistance) {
+    func rebuildDuplicateGroups(sensitivity: DuplicateSimilaritySensitivity,
+                                window: Int = defaultDuplicateWindow) {
         let records = fetchAllRecords().sorted { $0.cameraRollIndex < $1.cameraRollIndex }
         var parent = Dictionary(uniqueKeysWithValues: records.map { ($0.assetLocalIdentifier, $0.assetLocalIdentifier) })
         var bestScores: [String: Float] = [:]
+        let maxHashDistance = sensitivity.hashDistanceThreshold
 
         func root(of id: String) -> String {
             var current = id

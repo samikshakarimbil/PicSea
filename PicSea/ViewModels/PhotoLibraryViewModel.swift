@@ -16,11 +16,13 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
     @Published var isFilteredResults = false
     @Published var isIndexing = false
     @Published var indexingStatusText = ""
+    @Published var duplicateSensitivity: DuplicateSimilaritySensitivity = .medium
 
     private let classifier: ClassifierProtocol
     private let indexStore: PhotoIndexStore
     private var indexingTask: Task<Void, Never>?
     private var isUserInteracting = false
+    private var activeQuery = PhotoSearchQuery()
 
     init(classifier: ClassifierProtocol, modelContext: ModelContext) {
         self.classifier = classifier
@@ -73,6 +75,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
     func resetAssets() {
         assetIDs = allAssetIDs
         isFilteredResults = false
+        activeQuery = PhotoSearchQuery()
     }
 
     func showHome() {
@@ -87,13 +90,25 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         isUserInteracting = true
         defer { isUserInteracting = false }
 
+        activeQuery = query
         assetIDs = indexStore.search(query: query)
         isFilteredResults = true
     }
 
     func apply(quickAction: PhotoQuickAction) {
-        assetIDs = indexStore.assetIDs(forQuickAction: quickAction)
+        activeQuery = query(for: quickAction)
+        assetIDs = indexStore.search(query: activeQuery)
         isFilteredResults = true
+    }
+
+    func setDuplicateSensitivity(_ sensitivity: DuplicateSimilaritySensitivity) {
+        guard duplicateSensitivity != sensitivity else {
+            return
+        }
+
+        duplicateSensitivity = sensitivity
+        rebuildDuplicateGroupsForCurrentSensitivity()
+        startIndexingPipeline()
     }
 
     private func startIndexingPipeline() {
@@ -120,7 +135,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
             let batch = indexStore.pendingRecords(limit: 12)
 
             guard !batch.isEmpty else {
-                indexStore.rebuildDuplicateGroups()
+                indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
                 await refineDuplicateGroupsWithVision()
                 indexingStatusText = "Index ready"
                 allAssetIDs = indexStore.orderedAssetIDs()
@@ -156,7 +171,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
                 indexStore.markIndexed(assetID: record.assetLocalIdentifier, blurScore: blurScore, perceptualHash: perceptualHashBundle)
             }
 
-            indexStore.rebuildDuplicateGroups()
+            indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
     }
@@ -168,13 +183,44 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
         indexingStatusText = "Refining duplicates"
         let assets = PhotoLibraryManager.assets(for: allAssetIDs)
-        let groups = await PhotoLibraryManager.similarAssetIdentifierGroups(from: assets)
+        let groups = await PhotoLibraryManager.similarAssetIdentifierGroups(
+            from: assets,
+            minimumSimilarity: duplicateSensitivity.visionMinimumSimilarity
+        )
 
         guard !Task.isCancelled else {
             return
         }
 
         indexStore.applyDuplicateGroups(groups)
+    }
+
+    private func rebuildDuplicateGroupsForCurrentSensitivity() {
+        indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+
+        if isFilteredResults {
+            assetIDs = indexStore.search(query: activeQuery)
+        }
+    }
+
+    private func query(for quickAction: PhotoQuickAction) -> PhotoSearchQuery {
+        var query = PhotoSearchQuery()
+
+        switch quickAction {
+        case .duplicates:
+            query.duplicateFilter = .onlyDuplicates
+        case .blurry:
+            query.onlyBlurry = true
+            query.duplicateFilter = .include
+        case .screenshots:
+            query.mediaType = .screenshot
+            query.duplicateFilter = .include
+        case .selfies:
+            query.mediaType = .selfie
+            query.duplicateFilter = .include
+        }
+
+        return query
     }
 
     func fetchAlbum(named name: String) -> PHAssetCollection? {
