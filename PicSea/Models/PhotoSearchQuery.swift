@@ -7,6 +7,8 @@ import Foundation
 
 struct PhotoSearchQuery {
     var originalText: String = ""
+    var normalizedText: String = ""
+    var searchTokens: [String] = []
     var concepts: [String] = []
 
     var startDate: Date?

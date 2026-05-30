@@ -52,6 +52,7 @@ struct AssetThumbnail: View {
 
     private func requestImage() {
         guard image == nil,
+              size > 1,
               let asset = PhotoLibraryManager.asset(for: assetIdentifier) else {
             return
         }

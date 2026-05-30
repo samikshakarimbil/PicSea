@@ -112,23 +112,117 @@ struct PhotoLibraryManager {
 
     static func requestImage(for asset: PHAsset,
                              targetSize: CGSize = CGSize(width: 256, height: 256)) async -> UIImage? {
+        await requestPhotoKitImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: .aspectFit,
+            deliveryMode: .opportunistic,
+            resizeMode: .fast
+        )
+    }
+
+    static func requestThumbnail(for asset: PHAsset,
+                                 targetSize: CGSize = CGSize(width: 256, height: 256)) async -> UIImage? {
+        let normalizedSize = CGSize(
+            width: max(targetSize.width, 1),
+            height: max(targetSize.height, 1)
+        )
+
+        if let fastThumbnail = await requestPhotoKitImage(
+            for: asset,
+            targetSize: normalizedSize,
+            contentMode: .aspectFill,
+            deliveryMode: .fastFormat,
+            resizeMode: .fast
+        ) {
+            return fastThumbnail
+        }
+
+        return await requestPhotoKitImage(
+            for: asset,
+            targetSize: normalizedSize,
+            contentMode: .aspectFit,
+            deliveryMode: .opportunistic,
+            resizeMode: .fast
+        )
+    }
+
+    private static func requestPhotoKitImage(for asset: PHAsset,
+                                             targetSize: CGSize,
+                                             contentMode: PHImageContentMode,
+                                             deliveryMode: PHImageRequestOptionsDeliveryMode,
+                                             resizeMode: PHImageRequestOptionsResizeMode) async -> UIImage? {
         let options = PHImageRequestOptions()
-        options.deliveryMode = .highQualityFormat
-        options.resizeMode = .exact
+        options.deliveryMode = deliveryMode
+        options.resizeMode = resizeMode
+        options.isSynchronous = false
         options.isNetworkAccessAllowed = true
 
         return await withCheckedContinuation { continuation in
+            var didResume = false
+
             PHImageManager.default().requestImage(
                 for: asset,
                 targetSize: targetSize,
-                contentMode: .aspectFit,
+                contentMode: contentMode,
                 options: options
             ) { image, info in
-                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                guard !isDegraded else { return }
-                continuation.resume(returning: image)
+                guard !didResume else { return }
+
+                let wasCancelled = (info?[PHImageCancelledKey] as? Bool) == true
+                let hasError = info?[PHImageErrorKey] != nil
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) == true
+
+                if wasCancelled || hasError {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                if let image {
+                    didResume = true
+                    continuation.resume(returning: image)
+                    return
+                }
+
+                if !isDegraded {
+                    didResume = true
+                    continuation.resume(returning: nil)
+                }
             }
         }
+    }
+
+    static func generateVisionLabels(for image: UIImage,
+                                     confidenceThreshold: VNConfidence = 0.03) async throws -> [String] {
+        try Task.checkCancellation()
+
+        guard let cgImage = image.cgImage else {
+            return []
+        }
+
+        return try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+
+            let classificationRequest = VNClassifyImageRequest()
+            let humanRequest = VNDetectHumanRectanglesRequest()
+
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try handler.perform([classificationRequest, humanRequest])
+
+            var labels = (classificationRequest.results ?? [])
+                .prefix(30)
+                .filter { $0.confidence >= confidenceThreshold }
+                .map { $0.identifier.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            if (humanRequest.results ?? []).contains(where: { $0.confidence >= 0.3 }) {
+                labels.append("person")
+                labels.append("human")
+            }
+
+            return Array(Set(labels)).sorted()
+        }.value
     }
 
     static func blurryAssets(from assets: [PHAsset],

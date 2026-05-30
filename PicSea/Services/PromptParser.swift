@@ -11,16 +11,15 @@ struct PromptParser {
         query.originalText = text
 
         let cleanedText = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        query.normalizedText = cleanedText
 
         guard !cleanedText.isEmpty else {
             return query
         }
 
         let words = cleanedText
-            .replacingOccurrences(of: ",", with: " ")
-            .replacingOccurrences(of: ".", with: " ")
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
 
         // Media type detection
         if words.contains("screenshot") || words.contains("screenshots") {
@@ -32,12 +31,15 @@ struct PromptParser {
         }
 
         // Simple blur detection
-        if words.contains("blurry") || words.contains("blurred") {
+        if words.contains("blurry") || words.contains("blurred") || words.contains("bad") {
             query.includeBlurred = true
             query.onlyBlurry = true
         }
 
-        if words.contains("duplicate") || words.contains("duplicates") || words.contains("duplicated") {
+        if words.contains("duplicate") ||
+            words.contains("duplicates") ||
+            words.contains("duplicated") ||
+            words.contains("similar") {
             query.duplicateFilter = .onlyDuplicates
         }
 
@@ -61,15 +63,18 @@ struct PromptParser {
 
         let ignoredWords: Set<String> = [
             "show", "me", "find", "photos", "photo", "pictures", "pics",
-            "from", "in", "of", "with", "and", "my",
+            "from", "in", "of", "with", "and", "my", "a", "an", "the",
             "screenshot", "screenshots", "selfie", "selfies",
-            "blurry", "blurred", "duplicate", "duplicates", "duplicated"
+            "blurry", "blurred", "bad", "duplicate", "duplicates", "duplicated", "similar"
         ]
 
-        query.concepts = words.filter { word in
+        let searchableTokens = words.filter { word in
             !ignoredWords.contains(word) &&
-            !(word.count == 4 && Int(word) != nil)
+            !(word.count == 4 && Int(word) != nil) &&
+            word.count > 1
         }
+        query.searchTokens = searchableTokens
+        query.concepts = searchableTokens
 
         return query
     }

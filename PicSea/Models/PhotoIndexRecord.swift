@@ -24,6 +24,9 @@ final class PhotoIndexRecord {
     var lastIndexedAt: Date?
     var indexVersion: Int
     var cameraRollIndex: Int
+    var visionLabelsText: String = ""
+    var visionIndexedAt: Date?
+    var visionIndexVersion: Int = 0
 
     init(assetLocalIdentifier: String,
          creationDate: Date?,
@@ -52,6 +55,9 @@ final class PhotoIndexRecord {
         self.lastIndexedAt = nil
         self.indexVersion = indexVersion
         self.cameraRollIndex = cameraRollIndex
+        self.visionLabelsText = ""
+        self.visionIndexedAt = nil
+        self.visionIndexVersion = 0
     }
 }
 

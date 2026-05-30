@@ -7,9 +7,17 @@ import Foundation
 import Photos
 import SwiftData
 
+enum IndexingBatchSize {
+    static let metadata = 300
+    static let hashing = 75
+    static let blur = 30
+    static let vision = 10
+}
+
 @MainActor
 final class PhotoIndexStore {
     nonisolated static let currentIndexVersion = 2
+    nonisolated static let currentVisionIndexVersion = 2
     nonisolated static let defaultDuplicateWindow = 20
     nonisolated static let blurryThreshold: Float = 18
 
@@ -85,6 +93,20 @@ final class PhotoIndexStore {
             .map { $0 }
     }
 
+    func recordsNeedingVisionLabels(limit: Int) -> [PhotoIndexRecord] {
+        fetchAllRecords()
+            .filter { $0.visionIndexVersion < Self.currentVisionIndexVersion }
+            .sorted { $0.cameraRollIndex < $1.cameraRollIndex }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    func visionIndexProgress() -> (indexed: Int, total: Int) {
+        let records = fetchAllRecords()
+        let indexed = records.filter { $0.visionIndexVersion >= Self.currentVisionIndexVersion }.count
+        return (indexed, records.count)
+    }
+
     func markIndexed(assetID: String, blurScore: Float?, perceptualHash: String?) {
         guard let record = record(for: assetID) else {
             return
@@ -95,6 +117,20 @@ final class PhotoIndexStore {
         record.indexingStatus = perceptualHash == nil ? PhotoIndexingStatus.failed.rawValue : PhotoIndexingStatus.indexed.rawValue
         record.lastIndexedAt = Date()
         record.indexVersion = Self.currentIndexVersion
+    }
+
+    func markVisionIndexed(assetID: String, labels: [String]) {
+        guard let record = record(for: assetID) else {
+            return
+        }
+
+        markVisionIndexed(record: record, labels: labels)
+    }
+
+    func markVisionIndexed(record: PhotoIndexRecord, labels: [String]) {
+        record.visionLabelsText = searchableVisionText(from: labels)
+        record.visionIndexedAt = Date()
+        record.visionIndexVersion = Self.currentVisionIndexVersion
     }
 
     func rebuildDuplicateGroups(sensitivity: DuplicateSimilaritySensitivity,
@@ -245,6 +281,27 @@ final class PhotoIndexStore {
             records = records.filter { $0.duplicateGroupID != nil }
         }
 
+        let searchTokens = query.searchTokens.isEmpty ? query.concepts : query.searchTokens
+        let normalizedSearchTokens = searchTokens
+            .map(Self.normalizedSearchTokenVariants)
+            .filter { !$0.isEmpty }
+
+        if !normalizedSearchTokens.isEmpty {
+            return records
+                .compactMap { record -> (record: PhotoIndexRecord, score: Int)? in
+                    let score = Self.visionMatchCount(for: record, tokens: normalizedSearchTokens)
+                    return score > 0 ? (record, score) : nil
+                }
+                .sorted { left, right in
+                    if left.score == right.score {
+                        return left.record.cameraRollIndex < right.record.cameraRollIndex
+                    }
+
+                    return left.score > right.score
+                }
+                .map { $0.record.assetLocalIdentifier }
+        }
+
         return records.map(\.assetLocalIdentifier)
     }
 
@@ -301,6 +358,65 @@ final class PhotoIndexStore {
             return try context.fetch(descriptor)
         } catch {
             return []
+        }
+    }
+
+    func saveChanges() {
+        save()
+    }
+
+    private func searchableVisionText(from labels: [String]) -> String {
+        var tokens = Set<String>()
+
+        for label in labels {
+            let words = Self.normalizedVisionWords(from: label)
+            guard !words.isEmpty else { continue }
+
+            tokens.insert(words.joined(separator: " "))
+
+            for word in words where word.count > 1 {
+                tokens.insert(word)
+            }
+        }
+
+        guard !tokens.isEmpty else {
+            return ""
+        }
+
+        return tokens.sorted().map { "|\($0)|" }.joined()
+    }
+
+    private static func normalizedSearchTokenVariants(_ token: String) -> [String] {
+        let normalizedToken = normalizedVisionWords(from: token).joined(separator: " ")
+        guard !normalizedToken.isEmpty else {
+            return []
+        }
+
+        var variants: Set<String> = [normalizedToken]
+
+        if normalizedToken.hasSuffix("s"), normalizedToken.count > 3 {
+            variants.insert(String(normalizedToken.dropLast()))
+        } else {
+            variants.insert("\(normalizedToken)s")
+        }
+
+        return Array(variants)
+    }
+
+    private static func normalizedVisionWords(from text: String) -> [String] {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+    }
+
+    private static func visionMatchCount(for record: PhotoIndexRecord, tokens: [[String]]) -> Int {
+        tokens.reduce(0) { count, token in
+            let didMatch = token.contains { variant in
+                record.visionLabelsText.contains("|\(variant)|")
+            }
+
+            return didMatch ? count + 1 : count
         }
     }
 

@@ -23,6 +23,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
     private var indexingTask: Task<Void, Never>?
     private var isUserInteracting = false
     private var activeQuery = PhotoSearchQuery()
+    private var shouldPrioritizeVisionIndexing = false
 
     init(classifier: ClassifierProtocol, modelContext: ModelContext) {
         self.classifier = classifier
@@ -76,6 +77,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         assetIDs = allAssetIDs
         isFilteredResults = false
         activeQuery = PhotoSearchQuery()
+        shouldPrioritizeVisionIndexing = false
     }
 
     func showHome() {
@@ -93,6 +95,15 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         activeQuery = query
         assetIDs = indexStore.search(query: query)
         isFilteredResults = true
+
+        let searchTokens = query.searchTokens.isEmpty ? query.concepts : query.searchTokens
+        if !searchTokens.isEmpty {
+            shouldPrioritizeVisionIndexing = true
+
+            if !isIndexing {
+                startIndexingPipeline()
+            }
+        }
     }
 
     func apply(quickAction: PhotoQuickAction) {
@@ -132,18 +143,32 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
                 continue
             }
 
-            let batch = indexStore.pendingRecords(limit: 12)
+            if shouldPrioritizeVisionIndexing {
+                if await indexVisionLabelsIfNeeded() {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                } else {
+                    shouldPrioritizeVisionIndexing = false
+                }
+            }
 
-            guard !batch.isEmpty else {
+            let batch = indexStore.pendingRecords(limit: IndexingBatchSize.blur)
+
+            if batch.isEmpty {
                 indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+
+                let visionBatch = indexStore.recordsNeedingVisionLabels(limit: IndexingBatchSize.vision)
+
+                if !visionBatch.isEmpty {
+                    await processVisionBatch(visionBatch)
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                }
+
                 await refineDuplicateGroupsWithVision()
                 indexingStatusText = "Index ready"
                 allAssetIDs = indexStore.orderedAssetIDs()
-
-                if !isFilteredResults {
-                    assetIDs = allAssetIDs
-                }
-
+                refreshVisibleResultsIfNeeded()
                 break
             }
 
@@ -157,7 +182,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
                 }
 
                 guard let asset = PhotoLibraryManager.asset(for: record.assetLocalIdentifier),
-                      let image = await PhotoLibraryManager.requestImage(
+                      let image = await PhotoLibraryManager.requestThumbnail(
                         for: asset,
                         targetSize: CGSize(width: 256, height: 256)
                       ) else {
@@ -172,8 +197,51 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
             }
 
             indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+            refreshVisibleResultsIfNeeded()
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
+    }
+
+    private func indexVisionLabelsIfNeeded() async -> Bool {
+        let visionBatch = indexStore.recordsNeedingVisionLabels(limit: IndexingBatchSize.vision)
+
+        guard !visionBatch.isEmpty else {
+            return false
+        }
+
+        await processVisionBatch(visionBatch)
+        return true
+    }
+
+    private func processVisionBatch(_ records: [PhotoIndexRecord]) async {
+        let progress = indexStore.visionIndexProgress()
+        indexingStatusText = "Scanning photos... \(progress.indexed) / \(progress.total)"
+
+        for record in records {
+            guard !Task.isCancelled else { return }
+
+            if isUserInteracting {
+                break
+            }
+
+            guard let asset = PhotoLibraryManager.asset(for: record.assetLocalIdentifier),
+                  let image = await PhotoLibraryManager.requestThumbnail(for: asset) else {
+                indexStore.markVisionIndexed(record: record, labels: [])
+                continue
+            }
+
+            do {
+                let labels = try await PhotoLibraryManager.generateVisionLabels(for: image)
+                indexStore.markVisionIndexed(record: record, labels: labels)
+            } catch {
+                indexStore.markVisionIndexed(record: record, labels: [])
+            }
+        }
+
+        indexStore.saveChanges()
+        let updatedProgress = indexStore.visionIndexProgress()
+        indexingStatusText = "Scanning photos... \(updatedProgress.indexed) / \(updatedProgress.total)"
+        refreshVisibleResultsIfNeeded()
     }
 
     private func refineDuplicateGroupsWithVision() async {
@@ -199,7 +267,15 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
 
         if isFilteredResults {
+            refreshVisibleResultsIfNeeded()
+        }
+    }
+
+    private func refreshVisibleResultsIfNeeded() {
+        if isFilteredResults {
             assetIDs = indexStore.search(query: activeQuery)
+        } else {
+            assetIDs = allAssetIDs
         }
     }
 
@@ -316,7 +392,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
     }
 
     func requestThumbnail(for asset: PHAsset) async -> UIImage? {
-        await PhotoLibraryManager.requestImage(for: asset, targetSize: CGSize(width: 256, height: 256))
+        await PhotoLibraryManager.requestThumbnail(for: asset)
     }
 }
 

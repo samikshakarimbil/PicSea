@@ -396,13 +396,10 @@ struct ContentView: View {
     }
 
     private func select(action: PhotoQuickAction) {
-        if selectedQuickAction == action {
-            selectedQuickAction = nil
-            query = PhotoSearchQuery()
-        } else {
-            selectedQuickAction = action
-            query = query(for: action)
-        }
+        selectedQuickAction = action
+        promptText = action.title
+        query = query(for: action)
+        applyCurrentQuery()
     }
 
     private func query(for action: PhotoQuickAction) -> PhotoSearchQuery {
@@ -435,6 +432,8 @@ struct ContentView: View {
 
         let parsed = parser.parse(trimmed)
         nextQuery.originalText = parsed.originalText
+        nextQuery.normalizedText = parsed.normalizedText
+        nextQuery.searchTokens = parsed.searchTokens
         nextQuery.concepts = parsed.concepts
 
         if parsed.mediaType != .any {
