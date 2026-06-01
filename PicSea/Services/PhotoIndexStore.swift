@@ -17,7 +17,7 @@ enum IndexingBatchSize {
 @MainActor
 final class PhotoIndexStore {
     nonisolated static let currentIndexVersion = 2
-    nonisolated static let currentVisionIndexVersion = 2
+    nonisolated static let currentVisionIndexVersion = 3
     nonisolated static let defaultDuplicateWindow = 20
     nonisolated static let blurryThreshold: Float = 18
 
@@ -85,8 +85,7 @@ final class PhotoIndexStore {
             .filter { record in
                 record.indexingStatus != PhotoIndexingStatus.indexed.rawValue ||
                 record.indexVersion < Self.currentIndexVersion ||
-                record.blurScore == nil ||
-                record.perceptualHash == nil
+                record.lastIndexedAt == nil
             }
             .sorted { $0.cameraRollIndex < $1.cameraRollIndex }
             .prefix(limit)
@@ -107,6 +106,15 @@ final class PhotoIndexStore {
         return (indexed, records.count)
     }
 
+    func coreIndexProgress() -> (indexed: Int, total: Int) {
+        let records = fetchAllRecords()
+        let indexed = records.filter { record in
+            record.indexVersion >= Self.currentIndexVersion &&
+            record.indexingStatus == PhotoIndexingStatus.indexed.rawValue
+        }.count
+        return (indexed, records.count)
+    }
+
     func markIndexed(assetID: String, blurScore: Float?, perceptualHash: String?) {
         guard let record = record(for: assetID) else {
             return
@@ -114,7 +122,7 @@ final class PhotoIndexStore {
 
         record.blurScore = blurScore
         record.perceptualHash = perceptualHash
-        record.indexingStatus = perceptualHash == nil ? PhotoIndexingStatus.failed.rawValue : PhotoIndexingStatus.indexed.rawValue
+        record.indexingStatus = PhotoIndexingStatus.indexed.rawValue
         record.lastIndexedAt = Date()
         record.indexVersion = Self.currentIndexVersion
     }
@@ -129,6 +137,17 @@ final class PhotoIndexStore {
 
     func markVisionIndexed(record: PhotoIndexRecord, labels: [String]) {
         record.visionLabelsText = searchableVisionText(from: labels)
+        record.visionLabelsWithConfidenceText = ""
+        record.visionIndexedAt = Date()
+        record.visionIndexVersion = Self.currentVisionIndexVersion
+    }
+
+    func markVisionIndexed(record: PhotoIndexRecord, classifications: [VisionClassificationResult]) {
+        record.visionLabelsText = searchableVisionText(from: classifications.map(\.identifier))
+        record.visionLabelsWithConfidenceText = classifications
+            .prefix(20)
+            .map { "\($0.identifier)=\(String(format: "%.4f", $0.confidence))" }
+            .joined(separator: "|")
         record.visionIndexedAt = Date()
         record.visionIndexVersion = Self.currentVisionIndexVersion
     }

@@ -12,7 +12,7 @@ struct AssetThumbnail: View {
     let size: CGFloat
 
     @State private var image: UIImage?
-    @State private var requestID: PHImageRequestID?
+    @State private var imageTask: Task<Void, Never>?
 
     init(assetIdentifier: String, size: CGFloat) {
         self.assetIdentifier = assetIdentifier
@@ -41,11 +41,8 @@ struct AssetThumbnail: View {
             requestImage()
         }
         .onDisappear {
-            if let requestID {
-                PHImageManager.default().cancelImageRequest(requestID)
-            }
-
-            requestID = nil
+            imageTask?.cancel()
+            imageTask = nil
             image = nil
         }
     }
@@ -62,18 +59,17 @@ struct AssetThumbnail: View {
             height: size * UIScreen.main.scale
         )
 
-        let options = PHImageRequestOptions()
-        options.deliveryMode = .opportunistic
-        options.resizeMode = .fast
-        options.isNetworkAccessAllowed = true
+        imageTask?.cancel()
+        imageTask = Task {
+            let thumbnail = await PhotoLibraryManager.requestThumbnail(for: asset, targetSize: targetSize)
 
-        requestID = PHImageManager.default().requestImage(
-            for: asset,
-            targetSize: targetSize,
-            contentMode: .aspectFill,
-            options: options
-        ) { image, _ in
-            self.image = image
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await MainActor.run {
+                self.image = thumbnail
+            }
         }
     }
 }

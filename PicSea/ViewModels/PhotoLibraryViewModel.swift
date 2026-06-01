@@ -12,6 +12,10 @@ import UIKit
 final class PhotoLibraryViewModel: NSObject, ObservableObject {
     @Published var assetIDs: [String] = []
     @Published var allAssetIDs: [String] = []
+    @Published var candidateAssetIDs: [String] = []
+    @Published var confirmedResultAssetIDs: [String] = []
+    @Published var scannedCount = 0
+    @Published var totalCount = 0
     @Published var authorized = false
     @Published var isFilteredResults = false
     @Published var isIndexing = false
@@ -75,6 +79,10 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
     func resetAssets() {
         assetIDs = allAssetIDs
+        candidateAssetIDs = []
+        confirmedResultAssetIDs = []
+        scannedCount = 0
+        totalCount = allAssetIDs.count
         isFilteredResults = false
         activeQuery = PhotoSearchQuery()
         shouldPrioritizeVisionIndexing = false
@@ -88,28 +96,31 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         isUserInteracting = isActive
     }
 
-    func apply(query: PhotoSearchQuery) async {
-        isUserInteracting = true
-        defer { isUserInteracting = false }
-
+    func prepareForSearch(query: PhotoSearchQuery) {
         activeQuery = query
-        assetIDs = indexStore.search(query: query)
+        candidateAssetIDs = allAssetIDs
+        replaceConfirmedResults(with: indexStore.search(query: query))
         isFilteredResults = true
+        updateCoreIndexingProgressText()
 
         let searchTokens = query.searchTokens.isEmpty ? query.concepts : query.searchTokens
-        if !searchTokens.isEmpty {
-            shouldPrioritizeVisionIndexing = true
+        shouldPrioritizeVisionIndexing = !searchTokens.isEmpty
 
-            if !isIndexing {
-                startIndexingPipeline()
-            }
+        if !isIndexing {
+            startIndexingPipeline()
         }
+    }
+
+    func apply(query: PhotoSearchQuery) async {
+        prepareForSearch(query: query)
     }
 
     func apply(quickAction: PhotoQuickAction) {
         activeQuery = query(for: quickAction)
-        assetIDs = indexStore.search(query: activeQuery)
+        candidateAssetIDs = allAssetIDs
+        replaceConfirmedResults(with: indexStore.search(query: activeQuery))
         isFilteredResults = true
+        updateCoreIndexingProgressText()
     }
 
     func setDuplicateSensitivity(_ sensitivity: DuplicateSimilaritySensitivity) {
@@ -152,6 +163,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
                 }
             }
 
+            updateCoreIndexingProgressText()
             let batch = indexStore.pendingRecords(limit: IndexingBatchSize.blur)
 
             if batch.isEmpty {
@@ -172,7 +184,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
                 break
             }
 
-            indexingStatusText = "Indexing \(batch.count) photos"
+            updateCoreIndexingProgressText()
 
             for record in batch {
                 guard !Task.isCancelled else { return }
@@ -198,6 +210,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
             indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
             refreshVisibleResultsIfNeeded()
+            updateCoreIndexingProgressText()
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
     }
@@ -215,7 +228,9 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
     private func processVisionBatch(_ records: [PhotoIndexRecord]) async {
         let progress = indexStore.visionIndexProgress()
-        indexingStatusText = "Scanning photos... \(progress.indexed) / \(progress.total)"
+        scannedCount = progress.indexed
+        totalCount = progress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
 
         for record in records {
             guard !Task.isCancelled else { return }
@@ -231,8 +246,8 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
             }
 
             do {
-                let labels = try await PhotoLibraryManager.generateVisionLabels(for: image)
-                indexStore.markVisionIndexed(record: record, labels: labels)
+                let classifications = try await PhotoLibraryManager.generateVisionClassifications(for: image)
+                indexStore.markVisionIndexed(record: record, classifications: classifications)
             } catch {
                 indexStore.markVisionIndexed(record: record, labels: [])
             }
@@ -240,7 +255,9 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
         indexStore.saveChanges()
         let updatedProgress = indexStore.visionIndexProgress()
-        indexingStatusText = "Scanning photos... \(updatedProgress.indexed) / \(updatedProgress.total)"
+        scannedCount = updatedProgress.indexed
+        totalCount = updatedProgress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
         refreshVisibleResultsIfNeeded()
     }
 
@@ -273,10 +290,33 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
     private func refreshVisibleResultsIfNeeded() {
         if isFilteredResults {
-            assetIDs = indexStore.search(query: activeQuery)
+            appendConfirmedResults(indexStore.search(query: activeQuery))
         } else {
             assetIDs = allAssetIDs
         }
+    }
+
+    private func replaceConfirmedResults(with assetIDs: [String]) {
+        let orderedAssetIDs = orderedAssetIDs(from: assetIDs)
+        confirmedResultAssetIDs = orderedAssetIDs
+        self.assetIDs = orderedAssetIDs
+    }
+
+    private func appendConfirmedResults(_ assetIDs: [String]) {
+        let mergedAssetIDs = Set(confirmedResultAssetIDs).union(assetIDs)
+        replaceConfirmedResults(with: Array(mergedAssetIDs))
+    }
+
+    private func orderedAssetIDs(from assetIDs: [String]) -> [String] {
+        let assetIDSet = Set(assetIDs)
+        return allAssetIDs.filter { assetIDSet.contains($0) }
+    }
+
+    private func updateCoreIndexingProgressText() {
+        let progress = indexStore.coreIndexProgress()
+        scannedCount = progress.indexed
+        totalCount = progress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
     }
 
     private func query(for quickAction: PhotoQuickAction) -> PhotoSearchQuery {
@@ -393,6 +433,48 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
 
     func requestThumbnail(for asset: PHAsset) async -> UIImage? {
         await PhotoLibraryManager.requestThumbnail(for: asset)
+    }
+
+    func printVisionClassifications(for assetID: String) async {
+        print(await visionClassificationsDebugText(for: assetID))
+    }
+
+    func visionClassificationsDebugText(for assetID: String) async -> String {
+        guard let asset = PhotoLibraryManager.asset(for: assetID),
+              let image = await PhotoLibraryManager.requestThumbnail(
+                for: asset,
+                targetSize: CGSize(width: 512, height: 512)
+              ) else {
+            return "Vision debug failed: could not load thumbnail for \(assetID)"
+        }
+
+        do {
+            let classifications = try await PhotoLibraryManager.generateVisionClassifications(
+                for: image,
+                confidenceThreshold: 0,
+                limit: 20
+            )
+
+            guard !classifications.isEmpty else {
+                return "No Vision classifications returned for \(assetID)."
+            }
+
+            let lines = classifications.enumerated().map { index, classification in
+                "\(index + 1). \(classification.identifier) - \(String(format: "%.4f", classification.confidence))"
+            }
+
+            return "Top Vision classifications for \(assetID):\n\n\(lines.joined(separator: "\n"))"
+        } catch {
+            return "Vision debug failed for \(assetID): \(error)"
+        }
+    }
+
+    func dumpVisionSupportedIdentifiers() {
+        do {
+            _ = try PhotoLibraryManager.writeSupportedClassificationIdentifiersDebugFile()
+        } catch {
+            print("Vision supported identifiers dump failed: \(error)")
+        }
     }
 }
 

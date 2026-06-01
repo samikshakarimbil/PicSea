@@ -8,6 +8,11 @@ import Photos
 import UIKit
 import Vision
 
+struct VisionClassificationResult: Sendable {
+    let identifier: String
+    let confidence: Float
+}
+
 struct PhotoLibraryManager {
     private static let maxConcurrentImageAnalysisTasks = 4
 
@@ -117,7 +122,7 @@ struct PhotoLibraryManager {
             targetSize: targetSize,
             contentMode: .aspectFit,
             deliveryMode: .opportunistic,
-            resizeMode: .fast
+            resizeMode: .none
         )
     }
 
@@ -128,22 +133,12 @@ struct PhotoLibraryManager {
             height: max(targetSize.height, 1)
         )
 
-        if let fastThumbnail = await requestPhotoKitImage(
-            for: asset,
-            targetSize: normalizedSize,
-            contentMode: .aspectFill,
-            deliveryMode: .fastFormat,
-            resizeMode: .fast
-        ) {
-            return fastThumbnail
-        }
-
         return await requestPhotoKitImage(
             for: asset,
             targetSize: normalizedSize,
             contentMode: .aspectFit,
             deliveryMode: .opportunistic,
-            resizeMode: .fast
+            resizeMode: .none
         )
     }
 
@@ -195,6 +190,16 @@ struct PhotoLibraryManager {
 
     static func generateVisionLabels(for image: UIImage,
                                      confidenceThreshold: VNConfidence = 0.03) async throws -> [String] {
+        try await generateVisionClassifications(
+            for: image,
+            confidenceThreshold: confidenceThreshold,
+            limit: nil
+        ).map(\.identifier)
+    }
+
+    static func generateVisionClassifications(for image: UIImage,
+                                              confidenceThreshold: VNConfidence = 0.03,
+                                              limit: Int? = 30) async throws -> [VisionClassificationResult] {
         try Task.checkCancellation()
 
         guard let cgImage = image.cgImage else {
@@ -210,19 +215,64 @@ struct PhotoLibraryManager {
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             try handler.perform([classificationRequest, humanRequest])
 
-            var labels = (classificationRequest.results ?? [])
-                .prefix(30)
+            var classifications = (classificationRequest.results ?? [])
                 .filter { $0.confidence >= confidenceThreshold }
-                .map { $0.identifier.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+                .map {
+                    VisionClassificationResult(
+                        identifier: $0.identifier.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+                        confidence: $0.confidence
+                    )
+                }
+                .filter { !$0.identifier.isEmpty }
 
-            if (humanRequest.results ?? []).contains(where: { $0.confidence >= 0.3 }) {
-                labels.append("person")
-                labels.append("human")
+            if let humanConfidence = (humanRequest.results ?? []).map(\.confidence).max(),
+               humanConfidence >= 0.3 {
+                classifications.append(VisionClassificationResult(identifier: "person", confidence: humanConfidence))
+                classifications.append(VisionClassificationResult(identifier: "human", confidence: humanConfidence))
             }
 
-            return Array(Set(labels)).sorted()
+            return mergedClassifications(classifications, limit: limit)
         }.value
+    }
+
+    static func supportedClassificationIdentifiers() throws -> [String] {
+        let request = VNClassifyImageRequest()
+        return try request.supportedIdentifiers().sorted()
+    }
+
+    static func writeSupportedClassificationIdentifiersDebugFile() throws -> URL {
+        let identifiers = try supportedClassificationIdentifiers()
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let outputURL = documentsURL.appendingPathComponent("VisionSupportedIdentifiers.txt")
+        try identifiers.joined(separator: "\n").write(to: outputURL, atomically: true, encoding: .utf8)
+        print("Vision supported identifiers (\(identifiers.count)) written to \(outputURL.path)")
+        return outputURL
+    }
+
+    private static func mergedClassifications(_ classifications: [VisionClassificationResult],
+                                              limit: Int?) -> [VisionClassificationResult] {
+        var bestConfidenceByIdentifier: [String: Float] = [:]
+
+        for classification in classifications {
+            let currentConfidence = bestConfidenceByIdentifier[classification.identifier] ?? 0
+            bestConfidenceByIdentifier[classification.identifier] = max(currentConfidence, classification.confidence)
+        }
+
+        let sortedClassifications = bestConfidenceByIdentifier
+            .map { VisionClassificationResult(identifier: $0.key, confidence: $0.value) }
+            .sorted { left, right in
+                if left.confidence == right.confidence {
+                    return left.identifier < right.identifier
+                }
+
+                return left.confidence > right.confidence
+            }
+
+        guard let limit else {
+            return sortedClassifications
+        }
+
+        return Array(sortedClassifications.prefix(limit))
     }
 
     static func blurryAssets(from assets: [PHAsset],

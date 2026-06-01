@@ -25,6 +25,7 @@ final class PhotoIndexRecord {
     var indexVersion: Int
     var cameraRollIndex: Int
     var visionLabelsText: String = ""
+    var visionLabelsWithConfidenceText: String = ""
     var visionIndexedAt: Date?
     var visionIndexVersion: Int = 0
 
@@ -56,6 +57,7 @@ final class PhotoIndexRecord {
         self.indexVersion = indexVersion
         self.cameraRollIndex = cameraRollIndex
         self.visionLabelsText = ""
+        self.visionLabelsWithConfidenceText = ""
         self.visionIndexedAt = nil
         self.visionIndexVersion = 0
     }

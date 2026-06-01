@@ -9,6 +9,9 @@ import UIKit
 struct ContentView: View {
     @StateObject var vm: PhotoLibraryViewModel
     @AppStorage("duplicateSimilaritySensitivity") private var duplicateSensitivityRawValue = DuplicateSimilaritySensitivity.medium.rawValue
+    @AppStorage("defaultIncludeBlurred") private var defaultIncludeBlurred = true
+    @AppStorage("defaultDuplicateFilter") private var defaultDuplicateFilterRawValue = DuplicateFilter.exclude.rawValue
+    @FocusState private var isSearchFocused: Bool
 
     @State private var promptText = ""
     @State private var query = PhotoSearchQuery()
@@ -24,6 +27,8 @@ struct ContentView: View {
 
     @State private var showAlbumPrompt = false
     @State private var albumNameInput = ""
+    @State private var showVisionDebug = false
+    @State private var visionDebugText = ""
 
     private let parser = PromptParser()
 
@@ -48,7 +53,7 @@ struct ContentView: View {
                             ContentUnavailableView(
                                 isShowingResults ? "No Matches" : "No Photos",
                                 systemImage: "photo.on.rectangle",
-                                description: Text(isShowingResults ? "Try relaxing the filters." : "Grant access to more photos to build the preview.")
+                                description: Text(emptyStateDescription)
                             )
                         } else {
                             PhotoAssetGrid(
@@ -84,6 +89,14 @@ struct ContentView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
+                    if isShowingResults && isSelectionMode && selectedAssetIDs.count == 1 {
+                        Button("Vision Debug") {
+                            debugSelectedVisionPhoto()
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
                     if isShowingResults && !vm.assetIDs.isEmpty {
                         Button(selectionButtonTitle) {
                             selectionButtonTapped()
@@ -103,6 +116,7 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+                query = defaultFilterQuery
                 vm.setDuplicateSensitivity(duplicateSensitivity)
                 vm.loadPhotos()
             }
@@ -136,12 +150,47 @@ struct ContentView: View {
             } message: {
                 Text(alertMessage)
             }
+            .sheet(isPresented: $showVisionDebug) {
+                NavigationStack {
+                    ScrollView {
+                        Text(visionDebugText)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle("Vision Debug")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                showVisionDebug = false
+                            }
+                        }
+                    }
+                }
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private var visibleAssetIDs: [String] {
-        isShowingResults ? vm.assetIDs : vm.allAssetIDs
+        isShowingResults ? vm.confirmedResultAssetIDs : vm.allAssetIDs
+    }
+
+    private var emptyStateDescription: String {
+        if isShowingResults, vm.confirmedResultAssetIDs.isEmpty {
+            if vm.isIndexing, !vm.indexingStatusText.isEmpty {
+                return vm.indexingStatusText
+            }
+
+            if vm.totalCount > 0, vm.scannedCount < vm.totalCount {
+                return "Scanning photos... \(vm.scannedCount) / \(vm.totalCount)"
+            }
+
+            return "No confirmed matches yet."
+        }
+
+        return "Grant access to more photos to build the preview."
     }
 
     private var authorizationView: some View {
@@ -158,13 +207,18 @@ struct ContentView: View {
 
     private var settingsMenu: some View {
         Menu {
-            Picker("Duplicate Similarity", selection: duplicateSensitivityBinding) {
+            Button { } label: {
+                Label("Similarity for Duplication", systemImage: "square.on.square")
+            }
+            .disabled(true)
+
+            Picker("Sensitivity", selection: duplicateSensitivityBinding) {
                 ForEach(DuplicateSimilaritySensitivity.allCases) { sensitivity in
                     Text(sensitivity.displayName).tag(sensitivity)
                 }
             }
         } label: {
-            Image(systemName: "gearshape")
+            Label("Settings", systemImage: "gearshape")
         }
     }
 
@@ -179,6 +233,17 @@ struct ContentView: View {
             duplicateSensitivityRawValue = newValue.rawValue
             vm.setDuplicateSensitivity(newValue)
         }
+    }
+
+    private var defaultDuplicateFilter: DuplicateFilter {
+        DuplicateFilter(rawValue: defaultDuplicateFilterRawValue) ?? .exclude
+    }
+
+    private var defaultFilterQuery: PhotoSearchQuery {
+        var defaultQuery = PhotoSearchQuery()
+        defaultQuery.includeBlurred = defaultIncludeBlurred
+        defaultQuery.duplicateFilter = defaultDuplicateFilter
+        return defaultQuery
     }
 
     private var bottomControls: some View {
@@ -227,9 +292,20 @@ struct ContentView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
+                .focused($isSearchFocused)
                 .onSubmit {
                     submitSearch()
                 }
+
+            if isSearchFocused {
+                Button {
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Dismiss Keyboard")
+            }
 
             Button {
                 submitSearch()
@@ -391,19 +467,28 @@ struct ContentView: View {
             return
         }
 
+        if isShowingResults {
+            selectedQuickAction = nil
+        }
+
         query = queryForSearch()
         applyCurrentQuery()
     }
 
     private func select(action: PhotoQuickAction) {
-        selectedQuickAction = action
-        promptText = action.title
-        query = query(for: action)
-        applyCurrentQuery()
+        if selectedQuickAction == action {
+            selectedQuickAction = nil
+            query = defaultFilterQuery
+        } else {
+            selectedQuickAction = action
+            query = query(for: action)
+        }
+
+        isSearchFocused = true
     }
 
     private func query(for action: PhotoQuickAction) -> PhotoSearchQuery {
-        var actionQuery = PhotoSearchQuery()
+        var actionQuery = defaultFilterQuery
 
         switch action {
         case .duplicates:
@@ -424,7 +509,7 @@ struct ContentView: View {
 
     private func queryForSearch() -> PhotoSearchQuery {
         let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var nextQuery = selectedQuickAction.map(query(for:)) ?? PhotoSearchQuery()
+        var nextQuery = baseQueryForSearch()
 
         guard !trimmed.isEmpty else {
             return nextQuery
@@ -460,14 +545,41 @@ struct ContentView: View {
         return nextQuery
     }
 
-    private func applyCurrentQuery() {
+    private func baseQueryForSearch() -> PhotoSearchQuery {
+        if !isShowingResults, let selectedQuickAction {
+            return query(for: selectedQuickAction)
+        }
+
+        if isShowingResults {
+            var nextQuery = PhotoSearchQuery()
+            nextQuery.mediaType = query.mediaType
+            nextQuery.startDate = query.startDate
+            nextQuery.endDate = query.endDate
+            nextQuery.includeBlurred = query.includeBlurred
+            nextQuery.duplicateFilter = query.duplicateFilter
+            return nextQuery
+        }
+
+        return defaultFilterQuery
+    }
+
+    private func applyCurrentQuery(persistDefaults: Bool = true) {
+        if persistDefaults {
+            persistFilterDefaults(from: query)
+        }
+
+        vm.prepareForSearch(query: query)
         isShowingResults = true
         selectedAssetIDs.removeAll()
         isSelectionMode = false
+    }
 
-        Task {
-            await vm.apply(query: query)
+    private func persistFilterDefaults(from query: PhotoSearchQuery) {
+        if !query.onlyBlurry {
+            defaultIncludeBlurred = query.includeBlurred
         }
+
+        defaultDuplicateFilterRawValue = query.duplicateFilter.rawValue
     }
 
     private func selectionButtonTapped() {
@@ -491,9 +603,28 @@ struct ContentView: View {
         }
     }
 
+    private func debugSelectedVisionPhoto() {
+        guard let selectedAssetID = selectedAssetIDs.first else {
+            return
+        }
+
+        debugVisionPhoto(for: selectedAssetID)
+    }
+
+    private func debugVisionPhoto(for assetID: String) {
+        visionDebugText = "Loading Vision classifications..."
+        showVisionDebug = true
+
+        Task {
+            let debugText = await vm.visionClassificationsDebugText(for: assetID)
+            print(debugText)
+            visionDebugText = debugText
+        }
+    }
+
     private func returnHome() {
         promptText = ""
-        query = PhotoSearchQuery()
+        query = defaultFilterQuery
         selectedQuickAction = nil
         selectedAssetIDs.removeAll()
         isSelectionMode = false
