@@ -4,9 +4,18 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct PicSeaApp: App {
+    private let modelContainer: ModelContainer = {
+        do {
+            return try ModelContainer(for: PhotoIndexRecord.self)
+        } catch {
+            fatalError("Failed to create photo index container: \(error)")
+        }
+    }()
+
     private let classifier: ClassifierProtocol = {
         let vision = VisionClassifier()
         if vision.isAvailable {
@@ -20,7 +29,11 @@ struct PicSeaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(vm: PhotoLibraryViewModel(classifier: classifier))
+            ContentView(vm: PhotoLibraryViewModel(
+                classifier: classifier,
+                modelContext: modelContainer.mainContext
+            ))
         }
+        .modelContainer(modelContainer)
     }
 }

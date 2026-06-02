@@ -4,22 +4,32 @@
 //
 
 import SwiftUI
-import Photos
+import UIKit
 
 struct ContentView: View {
     @StateObject var vm: PhotoLibraryViewModel
+    @AppStorage("duplicateSimilaritySensitivity") private var duplicateSensitivityRawValue = DuplicateSimilaritySensitivity.medium.rawValue
+    @AppStorage("defaultIncludeBlurred") private var defaultIncludeBlurred = true
+    @AppStorage("defaultDuplicateFilter") private var defaultDuplicateFilterRawValue = DuplicateFilter.exclude.rawValue
+    @AppStorage("blurSensitivity") private var blurSensitivityRawValue = BlurSensitivity.medium.rawValue
+    @FocusState private var isSearchFocused: Bool
 
     @State private var promptText = ""
+    @State private var query = PhotoSearchQuery()
+    @State private var selectedQuickAction: PhotoQuickAction?
+    @State private var isShowingResults = false
+    @State private var showFilters = false
+    @State private var isSelectionMode = false
+    @State private var selectedAssetIDs: Set<String> = []
+
     @State private var showAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
 
     @State private var showAlbumPrompt = false
     @State private var albumNameInput = ""
-    @State private var continueFromResults = false
-    
-    @State private var parsedQuery = PhotoSearchQuery()
-    @State private var showFiltersScreen = false
+    @State private var showVisionDebug = false
+    @State private var visionDebugText = ""
 
     private let parser = PromptParser()
 
@@ -27,103 +37,116 @@ struct ContentView: View {
         NavigationStack {
             Group {
                 if !vm.authorized {
-                    VStack(spacing: 16) {
-                        Text("PicSea needs access to your photos.")
-                        Button("Grant Access") {
-                            vm.loadPhotos()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
+                    authorizationView
                 } else {
-                    VStack(spacing: 12) {
-                        if vm.isFilteredResults &&
-                            (!promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || continueFromResults) {
-                            HStack {
-                                Button {
-                                    albumNameInput = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    showAlbumPrompt = true
-                                } label: {
-                                    Label("Save Results to Album", systemImage: "square.and.arrow.down")
-                                }
-                                .buttonStyle(.borderedProminent)
+                    VStack(spacing: 0) {
+                        if isShowingResults {
+                            filterSummarySection
 
-                                Spacer()
+                            if showFilters {
+                                filterEditor
+                                    .padding(.horizontal)
+                                    .padding(.bottom, 10)
                             }
-                            .padding(.horizontal)
                         }
 
-                        ScrollView {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 4) {
-                                ForEach(vm.assets, id: \.localIdentifier) { asset in
-                                    AssetThumbnail(asset: asset, size: 100)
-                                }
+                        if visibleAssetIDs.isEmpty {
+                            ContentUnavailableView(
+                                isShowingResults ? "No Matches" : "No Photos",
+                                systemImage: "photo.on.rectangle",
+                                description: Text(emptyStateDescription)
+                            )
+                        } else {
+                            PhotoAssetGrid(
+                                assetIDs: visibleAssetIDs,
+                                isSelectionMode: isSelectionMode,
+                                selectedAssetIDs: selectedAssetIDs
+                            ) { assetID in
+                                toggleSelection(for: assetID)
+                            } onInteractionChanged: { isActive in
+                                vm.setUserInteractionActive(isActive)
                             }
-                            .padding(.horizontal, 4)
                         }
                     }
                 }
             }
-            .navigationTitle("PicSea Library")
+            .navigationTitle(isShowingResults ? "Results" : "PicSea")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if isShowingResults {
+                        Button {
+                            returnHome()
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !isShowingResults {
+                        settingsMenu
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isShowingResults && isSelectionMode && selectedAssetIDs.count == 1 {
+                        Button("Vision Debug") {
+                            debugSelectedVisionPhoto()
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isShowingResults && !vm.assetIDs.isEmpty {
+                        Button(selectionButtonTitle) {
+                            selectionButtonTapped()
+                        }
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isShowingResults && !vm.assetIDs.isEmpty {
+                        Button {
+                            albumNameInput = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            showAlbumPrompt = true
+                        } label: {
+                            Label("Save", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                }
+            }
             .onAppear {
+                query = defaultFilterQuery
+                vm.setDuplicateSensitivity(duplicateSensitivity)
+                vm.setBlurryThreshold(blurSensitivity.blurryThreshold)
                 vm.loadPhotos()
             }
-            .fullScreenCover(isPresented: $showFiltersScreen) {
-                SearchSessionView(vm: vm, query: parsedQuery)
+            .onChange(of: duplicateSensitivityRawValue) { _, _ in
+                vm.setDuplicateSensitivity(duplicateSensitivity)
+            }
+            .onChange(of: blurSensitivityRawValue) { _, _ in
+                vm.setBlurryThreshold(blurSensitivity.blurryThreshold)
             }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if vm.isFilteredResults &&
-                        (!promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || continueFromResults) {
-                        Toggle("Continue searching from these results", isOn: $continueFromResults)
-                            .padding(.horizontal)
-                    }
-
-                    HStack(spacing: 8) {
-                        TextField("Enter your prompt...", text: $promptText)
-                            .textFieldStyle(.roundedBorder)
-                            .submitLabel(.done)
-                            .onSubmit {
-                                submit()
-                            }
-                            .onChange(of: promptText) { _, newValue in
-                                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                                if trimmed.isEmpty && !continueFromResults {
-                                    vm.resetAssets()
-                                }
-                            }
-
-                        Button("Submit") {
-                            submit()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .padding(.horizontal)
-                }
-                .padding(.vertical, 10)
-                .background(.ultraThinMaterial)
-            }
-            .onChange(of: continueFromResults) { oldValue, newValue in
-                if oldValue == true &&
-                    newValue == false &&
-                    promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    vm.resetAssets()
-                }
+                bottomControls
             }
             .sheet(isPresented: $showAlbumPrompt) {
                 AlbumCreationView(albumName: $albumNameInput) {
                     showAlbumPrompt = false
-                    let finalName = albumNameInput.isEmpty ? "PicSea Results" : albumNameInput
+                    let finalName = albumNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "PicSea Results"
+                        : albumNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    vm.saveResultsToAlbum(named: finalName) { success, error in
+                    vm.saveSpecificAssetIDsToAlbum(assetIDsToSave, named: finalName) { success, error in
                         alertTitle = success ? "Saved to Album" : "Couldn't Save"
                         alertMessage = success
                             ? "Your current results were saved in \"\(finalName)\"."
                             : (error?.localizedDescription ?? "Unknown error.")
                         showAlert = true
+#if !targetEnvironment(simulator)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
                     }
                 }
             }
@@ -132,19 +155,532 @@ struct ContentView: View {
             } message: {
                 Text(alertMessage)
             }
+            .sheet(isPresented: $showVisionDebug) {
+                NavigationStack {
+                    ScrollView {
+                        Text(visionDebugText)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    .navigationTitle("Vision Debug")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                showVisionDebug = false
+                            }
+                        }
+                    }
+                }
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
-    private func submit() {
-        let query = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var visibleAssetIDs: [String] {
+        isShowingResults ? vm.confirmedResultAssetIDs : vm.allAssetIDs
+    }
 
-        guard !query.isEmpty else {
-            vm.resetAssets()
+    private var emptyStateDescription: String {
+        if isShowingResults, vm.confirmedResultAssetIDs.isEmpty {
+            if vm.isIndexing, !vm.indexingStatusText.isEmpty {
+                return vm.indexingStatusText
+            }
+
+            if vm.totalCount > 0, vm.scannedCount < vm.totalCount {
+                return "Scanning photos... \(vm.scannedCount) / \(vm.totalCount)"
+            }
+
+            return "No confirmed matches yet."
+        }
+
+        return "Grant access to more photos to build the preview."
+    }
+
+    private var authorizationView: some View {
+        VStack(spacing: 16) {
+            Text("PicSea needs access to your photos.")
+
+            Button("Grant Access") {
+                vm.loadPhotos()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+    }
+
+    private var settingsMenu: some View {
+        Menu {
+            Button { } label: {
+                Label("Similarity for Duplication", systemImage: "square.on.square")
+            }
+            .disabled(true)
+
+            Picker("Sensitivity", selection: duplicateSensitivityBinding) {
+                ForEach(DuplicateSimilaritySensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+
+            Button { } label: {
+                Label("Blur sensitivity", systemImage: "camera.filters")
+            }
+            .disabled(true)
+
+            Picker("Blur sensitivity", selection: blurSensitivityBinding) {
+                ForEach(BlurSensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+        } label: {
+            Label("Settings", systemImage: "gearshape")
+        }
+    }
+
+    private var duplicateSensitivity: DuplicateSimilaritySensitivity {
+        DuplicateSimilaritySensitivity(rawValue: duplicateSensitivityRawValue) ?? .medium
+    }
+
+    private var duplicateSensitivityBinding: Binding<DuplicateSimilaritySensitivity> {
+        Binding {
+            duplicateSensitivity
+        } set: { newValue in
+            duplicateSensitivityRawValue = newValue.rawValue
+            vm.setDuplicateSensitivity(newValue)
+        }
+    }
+
+    private var blurSensitivity: BlurSensitivity {
+        BlurSensitivity(rawValue: blurSensitivityRawValue) ?? .medium
+    }
+
+    private var defaultDuplicateFilter: DuplicateFilter {
+        DuplicateFilter(rawValue: defaultDuplicateFilterRawValue) ?? .exclude
+    }
+
+    private var defaultFilterQuery: PhotoSearchQuery {
+        var defaultQuery = PhotoSearchQuery()
+        defaultQuery.includeBlurred = defaultIncludeBlurred
+        defaultQuery.duplicateFilter = defaultDuplicateFilter
+        return defaultQuery
+    }
+
+    private var bottomControls: some View {
+        VStack(spacing: 10) {
+            if !isShowingResults {
+                quickActionChips
+            }
+
+            if vm.isIndexing, !vm.indexingStatusText.isEmpty {
+                Text(vm.indexingStatusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            searchBar
+        }
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
+
+    private var quickActionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(PhotoQuickAction.allCases) { action in
+                    Button {
+                        select(action: action)
+                    } label: {
+                        Label(action.title, systemImage: action.systemImage)
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selectedQuickAction == action ? .accentColor : .secondary)
+                    .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            TextField("Search photos...", text: $promptText)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($isSearchFocused)
+                .onSubmit {
+                    submitSearch()
+                }
+
+            if isSearchFocused {
+                Button {
+                    isSearchFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Dismiss Keyboard")
+            }
+
+            Button {
+                submitSearch()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedQuickAction == nil)
+        }
+        .padding(.horizontal)
+    }
+
+    private var filterSummarySection: some View {
+        Button {
+            showFilters.toggle()
+        } label: {
+            HStack {
+                Text(filterSummaryText)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                Spacer()
+
+                Image(systemName: showFilters ? "chevron.up" : "chevron.down")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private var filterEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Media Type", selection: $query.mediaType) {
+                ForEach(MediaType.allCases) { type in
+                    Text(type.displayName).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("Include blurry photos", isOn: $query.includeBlurred)
+
+            blurSensitivityPicker
+
+            HStack {
+                Text("Include duplicate photos")
+
+                Spacer()
+
+                Picker("Include duplicate photos", selection: $query.duplicateFilter) {
+                    ForEach(DuplicateFilter.allCases) { filter in
+                        Text(filter.displayName).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Start Date")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    OptionalDateField(date: Binding(
+                        get: { query.startDate },
+                        set: { query.startDate = $0 }
+                    ))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("End Date")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    OptionalDateField(date: Binding(
+                        get: { query.endDate },
+                        set: { query.endDate = $0 }
+                    ))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                applyCurrentQuery()
+            } label: {
+                Label("Apply Filters", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+    }
+
+    private var filterSummaryText: String {
+        var parts: [String] = []
+
+        if !query.concepts.isEmpty {
+            parts.append(query.concepts.joined(separator: ", "))
+        }
+
+        if query.mediaType != .any {
+            parts.append(query.mediaType.displayName)
+        }
+
+        if let startDate = query.startDate, let endDate = query.endDate {
+            parts.append("\(formattedDate(startDate)) - \(formattedDate(endDate))")
+        } else if let startDate = query.startDate {
+            parts.append("From \(formattedDate(startDate))")
+        } else if let endDate = query.endDate {
+            parts.append("Until \(formattedDate(endDate))")
+        }
+
+        if query.onlyBlurry {
+            parts.append("Blurry only")
+        } else if query.includeBlurred {
+            parts.append("Blurry included")
+        }
+
+        switch query.duplicateFilter {
+        case .include:
+            parts.append("Duplicates included")
+        case .exclude:
+            parts.append("Duplicates hidden")
+        case .onlyDuplicates:
+            parts.append("Only duplicates")
+        }
+
+        return parts.isEmpty ? "More filters" : parts.joined(separator: " • ")
+    }
+
+    private var selectionButtonTitle: String {
+        if !isSelectionMode {
+            return "Select"
+        } else if selectedAssetIDs.count == vm.assetIDs.count {
+            return "Unselect All"
+        } else {
+            return "Select All"
+        }
+    }
+
+    private var assetIDsToSave: [String] {
+        if isSelectionMode && !selectedAssetIDs.isEmpty {
+            return vm.assetIDs.filter { selectedAssetIDs.contains($0) }
+        } else {
+            return vm.assetIDs
+        }
+    }
+
+    private func submitSearch() {
+        guard selectedQuickAction != nil || !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
 
-        parsedQuery = parser.parse(query)
-        showFiltersScreen = true
+        if isShowingResults {
+            selectedQuickAction = nil
+        }
+
+        query = queryForSearch()
+        applyCurrentQuery()
+    }
+
+    private func select(action: PhotoQuickAction) {
+        if selectedQuickAction == action {
+            selectedQuickAction = nil
+            query = defaultFilterQuery
+        } else {
+            selectedQuickAction = action
+            query = query(for: action)
+        }
+
+        isSearchFocused = true
+    }
+
+    private func query(for action: PhotoQuickAction) -> PhotoSearchQuery {
+        var actionQuery = defaultFilterQuery
+
+        switch action {
+        case .duplicates:
+            actionQuery.duplicateFilter = .onlyDuplicates
+        case .blurry:
+            actionQuery.onlyBlurry = true
+            actionQuery.duplicateFilter = .include
+        case .screenshots:
+            actionQuery.mediaType = .screenshot
+            actionQuery.duplicateFilter = .include
+        case .selfies:
+            actionQuery.mediaType = .selfie
+            actionQuery.duplicateFilter = .include
+        }
+
+        return actionQuery
+    }
+
+    private func queryForSearch() -> PhotoSearchQuery {
+        let trimmed = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var nextQuery = baseQueryForSearch()
+
+        guard !trimmed.isEmpty else {
+            return nextQuery
+        }
+
+        let parsed = parser.parse(trimmed)
+        nextQuery.originalText = parsed.originalText
+        nextQuery.normalizedText = parsed.normalizedText
+        nextQuery.searchTokens = parsed.searchTokens
+        nextQuery.concepts = parsed.concepts
+
+        if parsed.mediaType != .any {
+            nextQuery.mediaType = parsed.mediaType
+        }
+
+        if let startDate = parsed.startDate {
+            nextQuery.startDate = startDate
+        }
+
+        if let endDate = parsed.endDate {
+            nextQuery.endDate = endDate
+        }
+
+        if parsed.onlyBlurry {
+            nextQuery.onlyBlurry = true
+            nextQuery.includeBlurred = true
+        }
+
+        if parsed.duplicateFilter == .onlyDuplicates {
+            nextQuery.duplicateFilter = .onlyDuplicates
+        }
+
+        return nextQuery
+    }
+
+    private func baseQueryForSearch() -> PhotoSearchQuery {
+        if !isShowingResults, let selectedQuickAction {
+            return query(for: selectedQuickAction)
+        }
+
+        if isShowingResults {
+            var nextQuery = PhotoSearchQuery()
+            nextQuery.mediaType = query.mediaType
+            nextQuery.startDate = query.startDate
+            nextQuery.endDate = query.endDate
+            nextQuery.includeBlurred = query.includeBlurred
+            nextQuery.duplicateFilter = query.duplicateFilter
+            return nextQuery
+        }
+
+        return defaultFilterQuery
+    }
+
+    private func applyCurrentQuery(persistDefaults: Bool = true) {
+        if persistDefaults {
+            persistFilterDefaults(from: query)
+        }
+
+        vm.prepareForSearch(query: query)
+        isShowingResults = true
+        selectedAssetIDs.removeAll()
+        isSelectionMode = false
+    }
+
+    private func persistFilterDefaults(from query: PhotoSearchQuery) {
+        if !query.onlyBlurry {
+            defaultIncludeBlurred = query.includeBlurred
+        }
+
+        defaultDuplicateFilterRawValue = query.duplicateFilter.rawValue
+    }
+
+    private var blurSensitivityPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Blur sensitivity")
+                .font(.subheadline)
+
+            Picker("Blur sensitivity", selection: blurSensitivityBinding) {
+                ForEach(BlurSensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var blurSensitivityBinding: Binding<BlurSensitivity> {
+        Binding {
+            blurSensitivity
+        } set: { newValue in
+            blurSensitivityRawValue = newValue.rawValue
+            vm.setBlurryThreshold(newValue.blurryThreshold)
+        }
+    }
+
+    private func selectionButtonTapped() {
+        if !isSelectionMode {
+            isSelectionMode = true
+            selectedAssetIDs.removeAll()
+        } else if selectedAssetIDs.count == vm.assetIDs.count {
+            selectedAssetIDs.removeAll()
+        } else {
+            selectedAssetIDs = Set(vm.assetIDs)
+        }
+    }
+
+    private func toggleSelection(for assetID: String) {
+        guard isSelectionMode else { return }
+
+        if selectedAssetIDs.contains(assetID) {
+            selectedAssetIDs.remove(assetID)
+        } else {
+            selectedAssetIDs.insert(assetID)
+        }
+    }
+
+    private func debugSelectedVisionPhoto() {
+        guard let selectedAssetID = selectedAssetIDs.first else {
+            return
+        }
+
+        debugVisionPhoto(for: selectedAssetID)
+    }
+
+    private func debugVisionPhoto(for assetID: String) {
+        visionDebugText = "Loading Vision classifications..."
+        showVisionDebug = true
+
+        Task {
+            let debugText = await vm.visionClassificationsDebugText(for: assetID)
+            print(debugText)
+            visionDebugText = debugText
+        }
+    }
+
+    private func returnHome() {
+        promptText = ""
+        query = defaultFilterQuery
+        selectedQuickAction = nil
+        selectedAssetIDs.removeAll()
+        isSelectionMode = false
+        showFilters = false
+        isShowingResults = false
+        vm.showHome()
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
     }
 }

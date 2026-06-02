@@ -5,24 +5,40 @@
 
 import Foundation
 import Photos
+import SwiftData
 import UIKit
 
-final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
-    @Published var assets: [PHAsset] = []
-    @Published var allAssets: [PHAsset] = []
+@MainActor
+final class PhotoLibraryViewModel: NSObject, ObservableObject {
+    @Published var assetIDs: [String] = []
+    @Published var allAssetIDs: [String] = []
+    @Published var candidateAssetIDs: [String] = []
+    @Published var confirmedResultAssetIDs: [String] = []
+    @Published var scannedCount = 0
+    @Published var totalCount = 0
     @Published var authorized = false
     @Published var isFilteredResults = false
+    @Published var isIndexing = false
+    @Published var indexingStatusText = ""
+    @Published var duplicateSensitivity: DuplicateSimilaritySensitivity = .medium
 
     private let classifier: ClassifierProtocol
+    private let indexStore: PhotoIndexStore
+    private var indexingTask: Task<Void, Never>?
+    private var isUserInteracting = false
+    private var activeQuery = PhotoSearchQuery()
+    private var shouldPrioritizeVisionIndexing = false
 
-    init(classifier: ClassifierProtocol) {
+    init(classifier: ClassifierProtocol, modelContext: ModelContext) {
         self.classifier = classifier
+        self.indexStore = PhotoIndexStore(context: modelContext)
         super.init()
         checkAuthorization()
         PHPhotoLibrary.shared().register(self)
     }
 
     deinit {
+        indexingTask?.cancel()
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
 
@@ -32,7 +48,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
         switch status {
         case .authorized, .limited:
             authorized = true
-            fetchPhotos()
+            refreshLibrary()
         case .notDetermined:
             authorized = false
         default:
@@ -42,38 +58,293 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
 
     func loadPhotos() {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.checkAuthorization()
             }
         }
     }
 
-    func fetchPhotos() {
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+    func refreshLibrary() {
+        let assets = PhotoLibraryManager.fetchAllPhotos()
+        indexStore.upsertMetadata(for: assets)
 
-        let fetchedAssets = PHAsset.fetchAssets(with: .image, options: options)
-        var tempAssets: [PHAsset] = []
+        allAssetIDs = indexStore.orderedAssetIDs()
 
-        fetchedAssets.enumerateObjects { asset, _, _ in
-            tempAssets.append(asset)
+        if !isFilteredResults {
+            assetIDs = allAssetIDs
         }
 
-        DispatchQueue.main.async {
-            self.allAssets = tempAssets
-            self.assets = tempAssets
-        }
+        startIndexingPipeline()
     }
 
     func resetAssets() {
-        assets = allAssets
+        assetIDs = allAssetIDs
+        candidateAssetIDs = []
+        confirmedResultAssetIDs = []
+        scannedCount = 0
+        totalCount = allAssetIDs.count
         isFilteredResults = false
+        activeQuery = PhotoSearchQuery()
+        shouldPrioritizeVisionIndexing = false
     }
 
-    func photoLibraryDidChange(_ changeInstance: PHChange) {
-        DispatchQueue.main.async {
-            self.fetchPhotos()
+    func showHome() {
+        resetAssets()
+    }
+
+    func setUserInteractionActive(_ isActive: Bool) {
+        isUserInteracting = isActive
+    }
+
+    func prepareForSearch(query: PhotoSearchQuery) {
+        activeQuery = query
+        candidateAssetIDs = allAssetIDs
+        replaceConfirmedResults(with: indexStore.search(query: query))
+        isFilteredResults = true
+        updateCoreIndexingProgressText()
+
+        let searchTokens = query.searchTokens.isEmpty ? query.concepts : query.searchTokens
+        shouldPrioritizeVisionIndexing = !searchTokens.isEmpty
+
+        if !isIndexing {
+            startIndexingPipeline()
         }
+    }
+
+    func apply(query: PhotoSearchQuery) async {
+        prepareForSearch(query: query)
+    }
+
+    func apply(quickAction: PhotoQuickAction) {
+        activeQuery = query(for: quickAction)
+        candidateAssetIDs = allAssetIDs
+        replaceConfirmedResults(with: indexStore.search(query: activeQuery))
+        isFilteredResults = true
+        updateCoreIndexingProgressText()
+    }
+
+    func setDuplicateSensitivity(_ sensitivity: DuplicateSimilaritySensitivity) {
+        guard duplicateSensitivity != sensitivity else {
+            return
+        }
+
+        duplicateSensitivity = sensitivity
+        rebuildDuplicateGroupsForCurrentSensitivity()
+        startIndexingPipeline()
+    }
+
+    func setBlurryThreshold(_ threshold: Float) {
+        indexStore.setBlurryThreshold(threshold)
+
+        if isFilteredResults {
+            refreshVisibleResultsIfNeeded()
+        }
+    }
+
+    private func startIndexingPipeline() {
+        indexingTask?.cancel()
+        indexingTask = Task { [weak self] in
+            await self?.runIndexingPipeline()
+        }
+    }
+
+    private func runIndexingPipeline() async {
+        isIndexing = true
+        defer {
+            isIndexing = false
+            indexingStatusText = ""
+        }
+
+        while !Task.isCancelled {
+            if isUserInteracting {
+                indexingStatusText = "Indexing paused"
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                continue
+            }
+
+            if shouldPrioritizeVisionIndexing {
+                if await indexVisionLabelsIfNeeded() {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                } else {
+                    shouldPrioritizeVisionIndexing = false
+                }
+            }
+
+            updateCoreIndexingProgressText()
+            let batch = indexStore.pendingRecords(limit: IndexingBatchSize.blur)
+
+            if batch.isEmpty {
+                indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+
+                let visionBatch = indexStore.recordsNeedingVisionLabels(limit: IndexingBatchSize.vision)
+
+                if !visionBatch.isEmpty {
+                    await processVisionBatch(visionBatch)
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    continue
+                }
+
+                await refineDuplicateGroupsWithVision()
+                indexingStatusText = "Index ready"
+                allAssetIDs = indexStore.orderedAssetIDs()
+                refreshVisibleResultsIfNeeded()
+                break
+            }
+
+            updateCoreIndexingProgressText()
+
+            for record in batch {
+                guard !Task.isCancelled else { return }
+
+                if isUserInteracting {
+                    break
+                }
+
+                guard let asset = PhotoLibraryManager.asset(for: record.assetLocalIdentifier),
+                      let image = await PhotoLibraryManager.requestThumbnail(
+                        for: asset,
+                        targetSize: CGSize(width: 256, height: 256)
+                      ) else {
+                    indexStore.markIndexed(assetID: record.assetLocalIdentifier, blurScore: nil, perceptualHash: nil)
+                    continue
+                }
+
+                let blurScore = PhotoLibraryManager.blurScore(for: image)
+                let perceptualHashes = PhotoLibraryManager.perceptualHashes(for: image)
+                let perceptualHashBundle = perceptualHashes.isEmpty ? nil : perceptualHashes.joined(separator: ",")
+                indexStore.markIndexed(assetID: record.assetLocalIdentifier, blurScore: blurScore, perceptualHash: perceptualHashBundle)
+            }
+
+            indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+            refreshVisibleResultsIfNeeded()
+            updateCoreIndexingProgressText()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+    }
+
+    private func indexVisionLabelsIfNeeded() async -> Bool {
+        let visionBatch = indexStore.recordsNeedingVisionLabels(limit: IndexingBatchSize.vision)
+
+        guard !visionBatch.isEmpty else {
+            return false
+        }
+
+        await processVisionBatch(visionBatch)
+        return true
+    }
+
+    private func processVisionBatch(_ records: [PhotoIndexRecord]) async {
+        let progress = indexStore.visionIndexProgress()
+        scannedCount = progress.indexed
+        totalCount = progress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
+
+        for record in records {
+            guard !Task.isCancelled else { return }
+
+            if isUserInteracting {
+                break
+            }
+
+            guard let asset = PhotoLibraryManager.asset(for: record.assetLocalIdentifier),
+                  let image = await PhotoLibraryManager.requestThumbnail(for: asset) else {
+                indexStore.markVisionIndexed(record: record, labels: [])
+                continue
+            }
+
+            do {
+                let classifications = try await PhotoLibraryManager.generateVisionClassifications(for: image)
+                indexStore.markVisionIndexed(record: record, classifications: classifications)
+            } catch {
+                indexStore.markVisionIndexed(record: record, labels: [])
+            }
+        }
+
+        indexStore.saveChanges()
+        let updatedProgress = indexStore.visionIndexProgress()
+        scannedCount = updatedProgress.indexed
+        totalCount = updatedProgress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
+        refreshVisibleResultsIfNeeded()
+    }
+
+    private func refineDuplicateGroupsWithVision() async {
+        guard !isUserInteracting else {
+            return
+        }
+
+        indexingStatusText = "Refining duplicates"
+        let assets = PhotoLibraryManager.assets(for: allAssetIDs)
+        let groups = await PhotoLibraryManager.similarAssetIdentifierGroups(
+            from: assets,
+            minimumSimilarity: duplicateSensitivity.visionMinimumSimilarity
+        )
+
+        guard !Task.isCancelled else {
+            return
+        }
+
+        indexStore.applyDuplicateGroups(groups)
+    }
+
+    private func rebuildDuplicateGroupsForCurrentSensitivity() {
+        indexStore.rebuildDuplicateGroups(sensitivity: duplicateSensitivity)
+
+        if isFilteredResults {
+            refreshVisibleResultsIfNeeded()
+        }
+    }
+
+    private func refreshVisibleResultsIfNeeded() {
+        if isFilteredResults {
+            appendConfirmedResults(indexStore.search(query: activeQuery))
+        } else {
+            assetIDs = allAssetIDs
+        }
+    }
+
+    private func replaceConfirmedResults(with assetIDs: [String]) {
+        let orderedAssetIDs = orderedAssetIDs(from: assetIDs)
+        confirmedResultAssetIDs = orderedAssetIDs
+        self.assetIDs = orderedAssetIDs
+    }
+
+    private func appendConfirmedResults(_ assetIDs: [String]) {
+        let mergedAssetIDs = Set(confirmedResultAssetIDs).union(assetIDs)
+        replaceConfirmedResults(with: Array(mergedAssetIDs))
+    }
+
+    private func orderedAssetIDs(from assetIDs: [String]) -> [String] {
+        let assetIDSet = Set(assetIDs)
+        return allAssetIDs.filter { assetIDSet.contains($0) }
+    }
+
+    private func updateCoreIndexingProgressText() {
+        let progress = indexStore.coreIndexProgress()
+        scannedCount = progress.indexed
+        totalCount = progress.total
+        indexingStatusText = "Scanning photos... \(scannedCount) / \(totalCount)"
+    }
+
+    private func query(for quickAction: PhotoQuickAction) -> PhotoSearchQuery {
+        var query = PhotoSearchQuery()
+
+        switch quickAction {
+        case .duplicates:
+            query.duplicateFilter = .onlyDuplicates
+        case .blurry:
+            query.onlyBlurry = true
+            query.duplicateFilter = .include
+        case .screenshots:
+            query.mediaType = .screenshot
+            query.duplicateFilter = .include
+        case .selfies:
+            query.mediaType = .selfie
+            query.duplicateFilter = .include
+        }
+
+        return query
     }
 
     func fetchAlbum(named name: String) -> PHAssetCollection? {
@@ -141,7 +412,11 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
     }
 
     func saveResultsToAlbum(named name: String, completion: @escaping (Bool, Error?) -> Void) {
-        let assetsToSave = assets
+        saveSpecificAssetIDsToAlbum(assetIDs, named: name, completion: completion)
+    }
+
+    func saveSpecificAssetIDsToAlbum(_ assetIDs: [String], named name: String, completion: @escaping (Bool, Error?) -> Void) {
+        let assetsToSave = PhotoLibraryManager.assets(for: assetIDs)
 
         createAlbumIfNeeded(named: name) { albumId, error in
             guard let albumId, error == nil else {
@@ -152,7 +427,7 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
             self.addAssets(assetsToSave, toAlbumId: albumId, completion: completion)
         }
     }
-    
+
     func saveSpecificAssetsToAlbum(_ assets: [PHAsset], named name: String, completion: @escaping (Bool, Error?) -> Void) {
         createAlbumIfNeeded(named: name) { albumId, error in
             guard let albumId, error == nil else {
@@ -163,106 +438,58 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject, PHPhotoLibraryCha
             self.addAssets(assets, toAlbumId: albumId, completion: completion)
         }
     }
-}
-
-extension PhotoLibraryViewModel {
-    @MainActor
-    func runAIClassification() async -> [PHAsset] {
-        await classifier.classify(assets: assets)
-    }
-
-    @MainActor
-    func search(in assets: [PHAsset], prompt: String) async -> [PHAsset] {
-        let query = prompt
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !query.isEmpty else {
-            isFilteredResults = false
-            return allAssets
-        }
-
-        isFilteredResults = true
-
-        var filteredAssets = assets
-
-        if let year = Int(query), query.count == 4 {
-            filteredAssets = filteredAssets.filter { asset in
-                guard let date = asset.creationDate else { return false }
-                return Calendar.current.component(.year, from: date) == year
-            }
-        }
-
-        return await classifier.classify(assets: filteredAssets)
-    }
-    
-    @MainActor
-    func search(in assets: [PHAsset], query: PhotoSearchQuery) async -> [PHAsset] {
-        var filteredAssets = assets
-        let calendar = Calendar.current
-        let screenshotAssetIDs = PhotoLibraryManager.screenshotAssetIdentifiers()
-
-        if let startDate = query.startDate {
-            let normalizedStartDate = calendar.startOfDay(for: startDate)
-            filteredAssets = filteredAssets.filter { asset in
-                guard let creationDate = asset.creationDate else { return false }
-                return creationDate >= normalizedStartDate
-            }
-        }
-
-        if let endDate = query.endDate {
-            guard let normalizedEndDate = calendar.date(byAdding: DateComponents(day: 1, second: -1),
-                                                        to: calendar.startOfDay(for: endDate)) else {
-                return []
-            }
-            filteredAssets = filteredAssets.filter { asset in
-                guard let creationDate = asset.creationDate else { return false }
-                return creationDate <= normalizedEndDate
-            }
-        }
-
-        switch query.mediaType {
-        case .any:
-            break
-        case .photo:
-            filteredAssets = filteredAssets.filter {
-                $0.mediaType == .image &&
-                !PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
-            }
-        case .screenshot:
-            filteredAssets = filteredAssets.filter {
-                PhotoLibraryManager.isScreenshotAsset($0, screenshotAssetIdentifiers: screenshotAssetIDs)
-            }
-        case .selfie:
-            break
-        }
-
-        let blurryAssetIDs = Set(
-            await PhotoLibraryManager.blurryAssets(from: filteredAssets).map(\.localIdentifier)
-        )
-
-        if !query.includeBlurred {
-            filteredAssets = filteredAssets.filter { !blurryAssetIDs.contains($0.localIdentifier) }
-        }
-
-        if !query.concepts.isEmpty {
-            filteredAssets = await classifier.classify(assets: filteredAssets)
-        }
-
-        return filteredAssets
-    }
-
 
     func requestThumbnail(for asset: PHAsset) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImage(
+        await PhotoLibraryManager.requestThumbnail(for: asset)
+    }
+
+    func printVisionClassifications(for assetID: String) async {
+        print(await visionClassificationsDebugText(for: assetID))
+    }
+
+    func visionClassificationsDebugText(for assetID: String) async -> String {
+        guard let asset = PhotoLibraryManager.asset(for: assetID),
+              let image = await PhotoLibraryManager.requestThumbnail(
                 for: asset,
-                targetSize: CGSize(width: 256, height: 256),
-                contentMode: .aspectFill,
-                options: nil
-            ) { image, _ in
-                continuation.resume(returning: image)
+                targetSize: CGSize(width: 512, height: 512)
+              ) else {
+            return "Vision debug failed: could not load thumbnail for \(assetID)"
+        }
+
+        do {
+            let classifications = try await PhotoLibraryManager.generateVisionClassifications(
+                for: image,
+                confidenceThreshold: 0,
+                limit: 20
+            )
+
+            guard !classifications.isEmpty else {
+                return "No Vision classifications returned for \(assetID)."
             }
+
+            let lines = classifications.enumerated().map { index, classification in
+                "\(index + 1). \(classification.identifier) - \(String(format: "%.4f", classification.confidence))"
+            }
+
+            return "Top Vision classifications for \(assetID):\n\n\(lines.joined(separator: "\n"))"
+        } catch {
+            return "Vision debug failed for \(assetID): \(error)"
+        }
+    }
+
+    func dumpVisionSupportedIdentifiers() {
+        do {
+            _ = try PhotoLibraryManager.writeSupportedClassificationIdentifiersDebugFile()
+        } catch {
+            print("Vision supported identifiers dump failed: \(error)")
+        }
+    }
+}
+
+extension PhotoLibraryViewModel: PHPhotoLibraryChangeObserver {
+    nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
+        Task { @MainActor in
+            self.refreshLibrary()
         }
     }
 }
