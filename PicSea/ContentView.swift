@@ -11,6 +11,7 @@ struct ContentView: View {
     @AppStorage("duplicateSimilaritySensitivity") private var duplicateSensitivityRawValue = DuplicateSimilaritySensitivity.medium.rawValue
     @AppStorage("defaultIncludeBlurred") private var defaultIncludeBlurred = true
     @AppStorage("defaultDuplicateFilter") private var defaultDuplicateFilterRawValue = DuplicateFilter.exclude.rawValue
+    @AppStorage("blurSensitivity") private var blurSensitivityRawValue = BlurSensitivity.medium.rawValue
     @FocusState private var isSearchFocused: Bool
 
     @State private var promptText = ""
@@ -118,10 +119,14 @@ struct ContentView: View {
             .onAppear {
                 query = defaultFilterQuery
                 vm.setDuplicateSensitivity(duplicateSensitivity)
+                vm.setBlurryThreshold(blurSensitivity.blurryThreshold)
                 vm.loadPhotos()
             }
             .onChange(of: duplicateSensitivityRawValue) { _, _ in
                 vm.setDuplicateSensitivity(duplicateSensitivity)
+            }
+            .onChange(of: blurSensitivityRawValue) { _, _ in
+                vm.setBlurryThreshold(blurSensitivity.blurryThreshold)
             }
             .safeAreaInset(edge: .bottom) {
                 bottomControls
@@ -217,6 +222,17 @@ struct ContentView: View {
                     Text(sensitivity.displayName).tag(sensitivity)
                 }
             }
+
+            Button { } label: {
+                Label("Blur sensitivity", systemImage: "camera.filters")
+            }
+            .disabled(true)
+
+            Picker("Blur sensitivity", selection: blurSensitivityBinding) {
+                ForEach(BlurSensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
         } label: {
             Label("Settings", systemImage: "gearshape")
         }
@@ -233,6 +249,10 @@ struct ContentView: View {
             duplicateSensitivityRawValue = newValue.rawValue
             vm.setDuplicateSensitivity(newValue)
         }
+    }
+
+    private var blurSensitivity: BlurSensitivity {
+        BlurSensitivity(rawValue: blurSensitivityRawValue) ?? .medium
     }
 
     private var defaultDuplicateFilter: DuplicateFilter {
@@ -354,6 +374,8 @@ struct ContentView: View {
             .pickerStyle(.segmented)
 
             Toggle("Include blurry photos", isOn: $query.includeBlurred)
+
+            blurSensitivityPicker
 
             HStack {
                 Text("Include duplicate photos")
@@ -580,6 +602,29 @@ struct ContentView: View {
         }
 
         defaultDuplicateFilterRawValue = query.duplicateFilter.rawValue
+    }
+
+    private var blurSensitivityPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Blur sensitivity")
+                .font(.subheadline)
+
+            Picker("Blur sensitivity", selection: blurSensitivityBinding) {
+                ForEach(BlurSensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var blurSensitivityBinding: Binding<BlurSensitivity> {
+        Binding {
+            blurSensitivity
+        } set: { newValue in
+            blurSensitivityRawValue = newValue.rawValue
+            vm.setBlurryThreshold(newValue.blurryThreshold)
+        }
     }
 
     private func selectionButtonTapped() {

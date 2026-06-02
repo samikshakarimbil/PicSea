@@ -124,6 +124,8 @@ struct SearchSessionView: View {
 
         let parsed = parser.parse(trimmed)
         query.originalText = parsed.originalText
+        query.normalizedText = parsed.normalizedText
+        query.searchTokens = parsed.searchTokens
         query.concepts = parsed.concepts
         query.mediaType = parsed.mediaType
         query.startDate = parsed.startDate

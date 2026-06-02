@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import CoreImage
 import Photos
 import UIKit
 import Vision
@@ -15,6 +16,7 @@ struct VisionClassificationResult: Sendable {
 
 struct PhotoLibraryManager {
     private static let maxConcurrentImageAnalysisTasks = 4
+    private static let ciContext = CIContext()
 
     private struct AssetFeaturePrints {
         let assetIndex: Int
@@ -202,7 +204,7 @@ struct PhotoLibraryManager {
                                               limit: Int? = 30) async throws -> [VisionClassificationResult] {
         try Task.checkCancellation()
 
-        guard let cgImage = image.cgImage else {
+        guard let cgImage = cgImage(from: image) else {
             return []
         }
 
@@ -503,6 +505,41 @@ struct PhotoLibraryManager {
     }
 
     private static func sharpnessScore(for image: UIImage) -> Float {
+        guard let cgImage = cgImage(from: image) else {
+            return 0
+        }
+
+        var scores: [Float] = [sharpnessScore(for: cgImage)]
+        let cropSpecs: [(scale: CGFloat, center: CGPoint)] = [
+            (0.72, CGPoint(x: 0.5, y: 0.5)),
+            (0.55, CGPoint(x: 0.5, y: 0.5)),
+            (0.65, CGPoint(x: 0.35, y: 0.35)),
+            (0.65, CGPoint(x: 0.65, y: 0.35)),
+            (0.65, CGPoint(x: 0.35, y: 0.65)),
+            (0.65, CGPoint(x: 0.65, y: 0.65))
+        ]
+
+        for cropSpec in cropSpecs {
+            guard let croppedImage = croppedImage(from: cgImage, scale: cropSpec.scale, center: cropSpec.center) else {
+                continue
+            }
+
+            let cropScore = sharpnessScore(for: croppedImage)
+            if cropScore > 0 {
+                scores.append(cropScore)
+            }
+        }
+
+        guard !scores.isEmpty else {
+            return 0
+        }
+
+        let sortedScores = scores.sorted(by: >)
+        let topCount = min(3, sortedScores.count)
+        return sortedScores.prefix(topCount).reduce(0, +) / Float(topCount)
+    }
+
+    private static func sharpnessScore(for image: CGImage) -> Float {
         guard let grayscalePixels = grayscalePixels(for: image), grayscalePixels.pixels.count > 9 else {
             return 0
         }
@@ -610,7 +647,7 @@ struct PhotoLibraryManager {
     }
 
     private static func featurePrintObservations(for image: UIImage) -> [VNFeaturePrintObservation] {
-        guard let cgImage = image.cgImage else {
+        guard let cgImage = cgImage(from: image) else {
             return []
         }
 
@@ -708,12 +745,16 @@ struct PhotoLibraryManager {
     }
 
     private static func grayscalePixels(for image: UIImage, width targetWidth: Int? = nil, height targetHeight: Int? = nil) -> (width: Int, height: Int, pixels: [UInt8])? {
-        guard let cgImage = image.cgImage else {
+        guard let cgImage = cgImage(from: image) else {
             return nil
         }
 
-        let width = targetWidth ?? cgImage.width
-        let height = targetHeight ?? cgImage.height
+        return grayscalePixels(for: cgImage, width: targetWidth, height: targetHeight)
+    }
+
+    private static func grayscalePixels(for image: CGImage, width targetWidth: Int? = nil, height targetHeight: Int? = nil) -> (width: Int, height: Int, pixels: [UInt8])? {
+        let width = targetWidth ?? image.width
+        let height = targetHeight ?? image.height
         let bytesPerRow = width
         var pixels = [UInt8](repeating: 0, count: width * height)
 
@@ -729,7 +770,33 @@ struct PhotoLibraryManager {
             return nil
         }
 
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return (width, height, pixels)
+    }
+
+    private static func cgImage(from image: UIImage) -> CGImage? {
+        if let cgImage = image.cgImage {
+            return cgImage
+        }
+
+        if let ciImage = image.ciImage {
+            let extent = ciImage.extent.integral
+            guard !extent.isEmpty else {
+                return nil
+            }
+
+            return ciContext.createCGImage(ciImage, from: extent)
+        }
+
+        let rendererFormat = UIGraphicsImageRendererFormat()
+        rendererFormat.scale = image.scale
+        rendererFormat.opaque = false
+
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: rendererFormat)
+        let renderedImage = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+
+        return renderedImage.cgImage
     }
 }

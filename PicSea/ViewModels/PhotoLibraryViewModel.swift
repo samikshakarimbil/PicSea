@@ -133,6 +133,14 @@ final class PhotoLibraryViewModel: NSObject, ObservableObject {
         startIndexingPipeline()
     }
 
+    func setBlurryThreshold(_ threshold: Float) {
+        indexStore.setBlurryThreshold(threshold)
+
+        if isFilteredResults {
+            refreshVisibleResultsIfNeeded()
+        }
+    }
+
     private func startIndexingPipeline() {
         indexingTask?.cancel()
         indexingTask = Task { [weak self] in

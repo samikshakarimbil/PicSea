@@ -19,12 +19,16 @@ final class PhotoIndexStore {
     nonisolated static let currentIndexVersion = 2
     nonisolated static let currentVisionIndexVersion = 3
     nonisolated static let defaultDuplicateWindow = 20
-    nonisolated static let blurryThreshold: Float = 18
+    private var blurryThreshold: Float = 14
 
     private let context: ModelContext
 
     init(context: ModelContext) {
         self.context = context
+    }
+
+    func setBlurryThreshold(_ threshold: Float) {
+        blurryThreshold = max(0, threshold)
     }
 
     func upsertMetadata(for assets: [PHAsset]) {
@@ -283,9 +287,9 @@ final class PhotoIndexStore {
         }
 
         if query.onlyBlurry {
-            records = records.filter { ($0.blurScore ?? .greatestFiniteMagnitude) < Self.blurryThreshold }
+            records = records.filter { ($0.blurScore ?? .greatestFiniteMagnitude) < blurryThreshold }
         } else if !query.includeBlurred {
-            records = records.filter { ($0.blurScore ?? Self.blurryThreshold) >= Self.blurryThreshold }
+            records = records.filter { ($0.blurScore ?? blurryThreshold) >= blurryThreshold }
         }
 
         switch query.duplicateFilter {
@@ -388,13 +392,8 @@ final class PhotoIndexStore {
         var tokens = Set<String>()
 
         for label in labels {
-            let words = Self.normalizedVisionWords(from: label)
-            guard !words.isEmpty else { continue }
-
-            tokens.insert(words.joined(separator: " "))
-
-            for word in words where word.count > 1 {
-                tokens.insert(word)
+            for variant in Self.normalizedTokenVariants(from: label) {
+                tokens.insert(variant)
             }
         }
 
@@ -406,20 +405,70 @@ final class PhotoIndexStore {
     }
 
     private static func normalizedSearchTokenVariants(_ token: String) -> [String] {
-        let normalizedToken = normalizedVisionWords(from: token).joined(separator: " ")
+        return normalizedTokenVariants(from: token)
+    }
+
+    private static func normalizedTokenVariants(from text: String) -> [String] {
+        let normalizedToken = normalizedVisionWords(from: text).joined(separator: " ")
         guard !normalizedToken.isEmpty else {
             return []
         }
 
         var variants: Set<String> = [normalizedToken]
 
-        if normalizedToken.hasSuffix("s"), normalizedToken.count > 3 {
-            variants.insert(String(normalizedToken.dropLast()))
-        } else {
-            variants.insert("\(normalizedToken)s")
+        guard normalizedVisionWords(from: text).count == 1,
+              let word = normalizedVisionWords(from: text).first else {
+            return Array(variants)
+        }
+
+        if let singular = singularWordVariant(from: word) {
+            variants.insert(singular)
+        }
+
+        if let plural = pluralWordVariant(from: word) {
+            variants.insert(plural)
         }
 
         return Array(variants)
+    }
+
+    private static func singularWordVariant(from word: String) -> String? {
+        guard word.count > 2 else { return nil }
+
+        if word.hasSuffix("ies"), word.count > 3 {
+            return String(word.dropLast(3)) + "y"
+        }
+
+        if word.hasSuffix("sses") || word.hasSuffix("xes") || word.hasSuffix("zes") || word.hasSuffix("ches") || word.hasSuffix("shes") || word.hasSuffix("oes") {
+            return String(word.dropLast(2))
+        }
+
+        if word.hasSuffix("s"), !word.hasSuffix("ss") {
+            return String(word.dropLast())
+        }
+
+        return nil
+    }
+
+    private static func pluralWordVariant(from word: String) -> String? {
+        guard word.count > 1 else { return nil }
+
+        if word.hasSuffix("y"), word.count > 1 {
+            let stem = String(word.dropLast())
+            if let precedingCharacter = stem.last, !"aeiou".contains(precedingCharacter) {
+                return stem + "ies"
+            }
+        }
+
+        if word.hasSuffix("s") || word.hasSuffix("x") || word.hasSuffix("z") || word.hasSuffix("ch") || word.hasSuffix("sh") {
+            return word + "es"
+        }
+
+        if word.hasSuffix("ss") {
+            return word + "es"
+        }
+
+        return word + "s"
     }
 
     private static func normalizedVisionWords(from text: String) -> [String] {
