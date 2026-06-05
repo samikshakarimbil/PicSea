@@ -1,4 +1,5 @@
 # PicSea
+
 ## Sydney Lynch & Samiksha Karimbil
 
 PicSea is an iOS app for searching a user's photo library with natural-language prompts, applying structured filters, and saving selected results into albums.
@@ -95,4 +96,4 @@ Run them from Xcode using the active scheme’s test action.
 - The classifier layer is abstracted behind `ClassiferProtocol`, making it straightforward to swap in new implementations (e.g., a Core ML model or a remote API) without touching the rest of the pipeline.
 - Search behavior intentionally combines prompt parsing with structured filters rather than relying on a single free-form query, which improves result precision on ambiguous input.
 
-Academic project — not licensed for reuse
+*Academic project — not licensed for reuse*
