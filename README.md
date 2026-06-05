@@ -1,5 +1,4 @@
 # PicSea
-
 ## Sydney Lynch & Samiksha Karimbil
 
 PicSea is an iOS app for searching a user's photo library with natural-language prompts, applying structured filters, and saving selected results into albums.
@@ -19,6 +18,7 @@ The app combines prompt parsing, photo-library access, and image classification 
 - Vision-based classification with a local fallback path
 
 ## Screenshots
+
 Add screenshots here:
 - Main library view
 - Search session with filters open
