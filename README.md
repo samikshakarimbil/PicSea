@@ -22,18 +22,18 @@ The app combines prompt parsing, photo-library access, and image classification 
 
 ### Main Page
 
-<img src="PicSea/images/main_page.png" height=500>
-<img src="PicSea/images/main_settings.png" height=500>
+<img src="PicSea/images/main_page.PNG" height=500>
+<img src="PicSea/images/main_settings.PNG" height=500>
 
 ### Results Filtering
 
-<img src="PicSea/images/results.png" height=500>
-<img src="PicSea/images/results_filters.png" height=500>
+<img src="PicSea/images/results.PNG" height=500>
+<img src="PicSea/images/results_filters.PNG" height=500>
 
 ### Album Creation
 
-<img src="PicSea/images/result_selection.png" height=500>
-<img src="PicSea/images/create_album.png" height=500>
+<img src="PicSea/images/result_selection.PNG" height=500>
+<img src="PicSea/images/create_album.PNG" height=500>
 
 ## Requirements
 
