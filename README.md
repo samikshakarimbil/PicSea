@@ -2,7 +2,7 @@
 
 ## Sydney Lynch & Samiksha Karimbil
 
-PicSea is an iOS application that helps users quickly locate photos within large personal photo libraries using natural-language search. The project combines prompt parsing, image classification, and structured filtering to bridge the gap between traditional photo browsing and AI-assisted image retrieval. All of this is done local to the device with no need for third-party cloud services, creating a secure option for photo navigation.
+PicSea is an iOS application that helps users quickly locate photos within large personal photo libraries using natural-language search. The project combines prompt parsing, image classification, and structured filtering to bridge the gap between traditional photo browsing and AI-assisted image retrieval. All of this is done locally on the device, with no need for third-party cloud services, creating a secure option for photo navigation.
 
 ## Overview
 
@@ -67,7 +67,7 @@ Photos permission granted at runtime
 1. The user enters a prompt in the main library view.
 2. `PromptParser` converts the prompt into a `PhotoSearchQuery`.
 3. `SearchSessionView` presents editable filters and the matching assets.
-4. PhotoLibraryViewModel fetches photo assets, applies filters, and coordinates classification.
+4. `PhotoLibraryViewModel` fetches photo assets, applies filters, and coordinates classification.
 5. Classification results are indexed and cached to improve performance during future searches.
 6. Desired photos can be selected and saved into a Photos album.
 
